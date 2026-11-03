@@ -28,6 +28,35 @@ function isSlotTaken(slot: number, duration: number, ranges: BookedRange[]) {
   return ranges.some((r) => slot < r.endMinutes && slotEnd > r.startMinutes);
 }
 
+function pickSmartDefaultDate(workingHours: WorkingHour[]): string {
+  const now = new Date();
+  const today = now.toLocaleDateString("en-CA");
+
+  for (let offset = 0; offset <= 7; offset++) {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + offset);
+
+    const dayHours = workingHours.filter((wh) => wh.weekday === date.getDay());
+    if (dayHours.length === 0) continue;
+
+    if (
+      offset === 0 &&
+      !dayHours.some(
+        (wh) =>
+          now.getHours() * 60 + now.getMinutes() <
+          timeToMinutes(wh.end_time)
+      )
+    ) {
+      continue;
+    }
+
+    return date.toLocaleDateString("en-CA");
+  }
+
+  return today;
+}
+
 export default function BookingClient({
   services,
   barbers,
@@ -35,7 +64,9 @@ export default function BookingClient({
 }: BookingClientProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(null);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState(() =>
+    pickSmartDefaultDate(workingHours)
+  );
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -86,6 +117,37 @@ export default function BookingClient({
       cancelled = true;
     };
   }, [selectedBarberId, selectedDate, refreshKey]);
+
+  useEffect(() => {
+    if (
+      selectedServiceId === null ||
+      selectedBarberId === null ||
+      !selectedDate
+    ) {
+      return;
+    }
+
+    const availableSlots = slots.filter(
+      (slot) =>
+        selectedService !== undefined &&
+        !isSlotTaken(slot, selectedService.duration, bookedRanges)
+    );
+    const nextSlot = availableSlots[0] ?? null;
+
+    setSelectedSlot((currentSlot) => {
+      if (currentSlot !== null && availableSlots.includes(currentSlot)) {
+        return currentSlot;
+      }
+
+      return currentSlot === nextSlot ? currentSlot : nextSlot;
+    });
+  }, [
+    selectedServiceId,
+    selectedBarberId,
+    selectedDate,
+    bookedRanges,
+    refreshKey,
+  ]);
 
   const validSelectedSlot =
     selectedSlot !== null &&
