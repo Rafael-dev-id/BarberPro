@@ -3,7 +3,13 @@
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { minutesToTime } from "@/lib/slots";
-import { sendWhatsAppToAdmin, buildBookingMessage } from "@/lib/whatsapp";
+import { STORE } from "@/lib/data";
+import {
+   sendWhatsAppToAdmin,
+   buildBookingMessage,
+   sendWhatsAppToCustomer,
+   buildCustomerBookingMessage,
+} from "@/lib/whatsapp";
 
 const bookingSchema = z.object({
    serviceId: z.number(),
@@ -102,12 +108,11 @@ export async function createBooking(input: BookingInput) {
          };
       }
 
-      return { ok: false as const, message: "Gagal menyimpan booking. Coba lagi" };
+      return { ok: false as const, message: "Gagal menyimpan booking. Coba lagi nanti" };
    }
 
-   let waOk = false;
-   try {
-      await sendWhatsAppToAdmin(
+   const [adminWa, custWa] = await Promise.allSettled([
+      sendWhatsAppToAdmin(
          buildBookingMessage({
             customerName: data.customerName,
             customerPhone: data.customerPhone,
@@ -117,13 +122,29 @@ export async function createBooking(input: BookingInput) {
             date: data.date,
             timeLabel: minutesToTime(data.slotMinutes),
          })
-      );
-      waOk = true;
-   } catch {}
+      ),
+      sendWhatsAppToCustomer(
+         data.customerPhone,
+         buildCustomerBookingMessage({
+            storeName: STORE.name,
+            customerName: data.customerName,
+            serviceName: service.name,
+            barberName: barber.name,
+            date: data.date,
+            timeLabel: minutesToTime(data.slotMinutes),
+         })
+      ),
+   ]);
 
-   const message = waOk
-      ? "Booking berhasil.\nAdmin sudah diberitahu via whatsapp."
-      : "Booking berhasil.\nGagal mengirim notif ke admin.";
+   const waOk = adminWa.status === "fulfilled";
+   const custOk = custWa.status === "fulfilled";
+   const message = [
+      "Booking berhasil.",
+      waOk ? "Admin sudah diberitahu via whatsapp." : "Gagal mengirim notif ke admin.",
+      custOk
+         ? "Konfirmasi WhatsApp terkirim ke nomormu."
+         : "WA konfirmasi ke nomormu gagal terkirim — bookingmu tetap tercatat.",
+   ].join("\n");
    
    return { ok: true as const, message };
 }

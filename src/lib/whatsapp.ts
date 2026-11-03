@@ -32,11 +32,7 @@ export function buildBookingMessage(p: BookingMessageParams) {
       .join("\n");
 }
 
-export async function sendWhatsAppToAdmin(message: string): Promise<void> {
-   if (!isWhatsAppConfigured()) {
-      throw new Error("Whatsapp belum dikonfigurasi.");
-   }
-
+async function postToFonnte(target: string, message: string): Promise<void> {
    const response = await fetch(WHATSAPP_API_URL, {
       method: "POST",
       headers: {
@@ -44,7 +40,7 @@ export async function sendWhatsAppToAdmin(message: string): Promise<void> {
          "Content-Type": "application/json",
       },
       body: JSON.stringify({
-         target: ADMIN_WHATSAPP_NUMBER,
+         target,
          message,
       }),
    });
@@ -58,4 +54,43 @@ export async function sendWhatsAppToAdmin(message: string): Promise<void> {
    if (json && json.status === false) {
       throw new Error(json.reason ?? "Gateway menolak pesan.");
    }
+}
+
+export async function sendWhatsAppToAdmin(message: string): Promise<void> {
+   if (!isWhatsAppConfigured()) {
+      throw new Error("Whatsapp belum dikonfigurasi.");
+   }
+
+   await postToFonnte(ADMIN_WHATSAPP_NUMBER!, message);
+}
+
+export async function sendWhatsAppToCustomer(
+   customerPhone: string,
+   message: string
+): Promise<void> {
+   if (!isWhatsAppConfigured()) {
+      throw new Error("Whatsapp belum dikonfigurasi.");
+   }
+
+   await postToFonnte(customerPhone.replace(/^\+/, ""), message);
+}
+
+export function buildCustomerBookingMessage(p: {
+   storeName: string;
+   customerName: string;
+   serviceName: string;
+   barberName: string;
+   date: string;
+   timeLabel: string;
+}): string {
+   return [
+      p.storeName,
+      "",
+      `Halo ${p.customerName}, booking kamu sudah kami catat ✔`,
+      `Layanan: ${p.serviceName}`,
+      `Barber: ${p.barberName}`,
+      `Tanggal: ${p.date}`,
+      `Jam: ${p.timeLabel} WIB`,
+      "Status: menunggu konfirmasi admin — kami kabari lagi di WhatsApp ini begitu jadwal dikonfirmasi.",
+   ].join("\n");
 }
