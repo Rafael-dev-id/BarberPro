@@ -28,8 +28,12 @@ export function formatTanggalLabel(dateStr: string): string {
       weekday: "long",
    }).format(date);
    const day = String(date.getDate()).padStart(2, "0");
-   const month = String(date.getMonth() + 1).padStart(2, "0");
-   const label = `${weekday}, ${day}/${month}`;
+   const month = new Intl.DateTimeFormat("id-ID", {
+      month: "short",
+   })
+      .format(date)
+      .toLocaleLowerCase("id-ID");
+   const label = `${weekday}, ${day} ${month}`;
    const prefix =
       dateStr === today ? "Hari ini · " : dateStr === tomorrow ? "Besok · " : "";
 

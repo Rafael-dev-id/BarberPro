@@ -538,8 +538,15 @@ export default function BookingClient({
                   isSlotTaken(slot, selectedService.duration, bookedRanges)
                 ) && (
                 <div className="mt-4 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
+                  <p className="font-semibold">
+                    Slot untuk {selectedBarber.name} sudah habis.
+                  </p>
+                  <p className="mt-1">{formatTanggalLabel(selectedDate)}</p>
+                  <p className="mt-2">
+                    {sameDayOffer.barberName} masih punya slot.
+                  </p>
                   <p>
-                    Slot {formatTanggalLabel(selectedDate)} untuk {selectedBarber.name} sudah habis — {sameDayOffer.barberName} masih punya slot {formatTanggalLabel(selectedDate)} (terdekat {minutesToTime(sameDayOffer.timeMinutes)} WIB).
+                    Slot terdekat: {minutesToTime(sameDayOffer.timeMinutes)} WIB.
                   </p>
                   <button
                     type="button"
