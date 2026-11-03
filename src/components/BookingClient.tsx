@@ -23,6 +23,11 @@ interface BookingClientProps {
   workingHours: WorkingHour[];
 }
 
+interface SmartDateNote {
+  sourceDate: string;
+  targetDate: string;
+}
+
 function isSlotTaken(slot: number, duration: number, ranges: BookedRange[]) {
   const slotEnd = slot + duration;
   return ranges.some((r) => slot < r.endMinutes && slotEnd > r.startMinutes);
@@ -78,7 +83,7 @@ export default function BookingClient({
   } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [dateNote, setDateNote] = useState("");
-  const [smartNote, setSmartNote] = useState("");
+  const [smartNote, setSmartNote] = useState<SmartDateNote | null>(null);
   const [sameDayOffer, setSameDayOffer] = useState<{
     barberId: number;
     barberName: string;
@@ -193,11 +198,9 @@ export default function BookingClient({
         if (barberAvailability.some(Boolean)) {
           if (candidate !== initialDate) setSelectedDate(candidate);
           if (candidate !== todayDate) {
-            setSmartNote(
-              `Hari ini sudah penuh untuk semua kapster — ditampilkan ${formatTanggalLabel(candidate)}.`
-            );
+            setSmartNote({ sourceDate: todayDate, targetDate: candidate });
           } else {
-            setSmartNote("");
+            setSmartNote(null);
           }
           return;
         }
@@ -333,8 +336,8 @@ export default function BookingClient({
           setSelectedDate(candidate);
           setSmartNote(
             candidate === todayDate
-              ? `Hari ini sudah penuh untuk semua kapster — ditampilkan ${formatTanggalLabel(candidate)}.`
-              : `${formatTanggalLabel(selectedDate)} sudah penuh untuk semua kapster — ditampilkan ${formatTanggalLabel(candidate)}.`
+              ? null
+              : { sourceDate: selectedDate, targetDate: candidate }
           );
           return;
         }
@@ -415,7 +418,7 @@ export default function BookingClient({
     setDateNote("");
     dateTouchedRef.current = true;
     setDateTouched(true);
-    setSmartNote("");
+    setSmartNote(null);
     setSameDayOffer(null);
     setSelectedDate(value);
     setSelectedSlot(null);
@@ -522,7 +525,16 @@ export default function BookingClient({
             {dateNote && <p className="mt-2 text-xs text-red-600">{dateNote}</p>}
             {!dateTouched && selectedDate !== today && smartNote && (
               <p className="mt-2 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
-                {smartNote}
+                <span className="font-semibold text-sky-900">
+                  {formatTanggalLabel(smartNote.sourceDate)}
+                </span>
+                <span className="mx-1">
+                  sudah penuh untuk semua kapster — ditampilkan
+                </span>
+                <span className="mx-1 font-semibold text-sky-900">
+                  {formatTanggalLabel(smartNote.targetDate)}
+                </span>
+                .
               </p>
             )}
           </section>
