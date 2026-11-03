@@ -80,7 +80,7 @@ export async function createBooking(input: BookingInput) {
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
       starts_at: minutesToIso(data.date, data.slotMinutes),
       ends_at: minutesToIso(data.date, data.slotMinutes + service.duration),
-      status: "pending",
+      status: "confirmed",
    });
 
    if (error) {

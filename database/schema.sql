@@ -52,8 +52,9 @@ create table public.bookings (
   customer_notes text,
   starts_at timestamptz not null,
   ends_at timestamptz not null,
-  status text not null default 'pending'
-    check (status in ('pending', 'confirmed', 'done', 'cancelled')),
+  status text not null default 'confirmed'
+    -- 'pending' = legacy main lama; dibuang migrasi 003 saat deploy
+    check (status in ('pending', 'confirmed', 'started', 'done', 'cancelled')),
   check (ends_at > starts_at)
 );
 
@@ -64,7 +65,7 @@ exclude using gist (
   barber_id with =,
   tstzrange(starts_at, ends_at) with &&
 )
-where (status in ('pending', 'confirmed'));
+where (status in ('pending', 'confirmed', 'started'));
 
 -- ---------------- RPC: least-privilege slot availability ----------------
 create or replace function public.get_booked_slots(
@@ -78,7 +79,7 @@ as $$
   select starts_at, ends_at
   from public.bookings
   where barber_id = p_barber_id
-    and status in ('pending', 'confirmed')
+    and status in ('pending', 'confirmed', 'started')
     and starts_at >= p_from
     and starts_at <= p_to;
 $$;

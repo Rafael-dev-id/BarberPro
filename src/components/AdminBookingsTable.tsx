@@ -11,6 +11,7 @@ import AdminStats from "@/components/AdminStats";
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-400/15 text-yellow-300",
   confirmed: "bg-sky-400/15 text-sky-300",
+  started: "bg-violet-400/15 text-violet-300",
   done: "bg-emerald-400/15 text-emerald-300",
   cancelled: "bg-red-400/15 text-red-300",
 };
@@ -26,7 +27,7 @@ export default function AdminBookingsTable({
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all" | "custom">("today");
-  const [status, setStatus] = useState<"all" | "pending" | "confirmed" | "done" | "cancelled">("all");
+  const [status, setStatus] = useState<"all" | "confirmed" | "started" | "done" | "cancelled">("all");
   const [barber, setBarber] = useState("all");
   const [q, setQ] = useState("");
   const [mounted, setMounted] = useState(false);
@@ -199,8 +200,8 @@ export default function AdminBookingsTable({
           className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm"
         >
           <option value="all">Semua status</option>
-          <option value="pending">Pending</option>
           <option value="confirmed">Dikonfirmasi</option>
+          <option value="started">Sedang dikerjakan</option>
           <option value="done">Selesai</option>
           <option value="cancelled">Dibatalkan</option>
         </select>
@@ -296,13 +297,23 @@ export default function AdminBookingsTable({
                       <button
                         type="button"
                         disabled={busyId === b.id}
+                        onClick={() => handleStatus(b.id, "started")}
+                        className="rounded-xl bg-sky-500 p-3 py-2 text-xs font-bold text-ink transition hover:bg-sky-400 disabled:opacity-50"
+                      >
+                        Mulai
+                      </button>
+                    )}
+                    {b.status === "started" && (
+                      <button
+                        type="button"
+                        disabled={busyId === b.id}
                         onClick={() => handleStatus(b.id, "done")}
                         className="rounded-xl bg-emerald-500 p-3 py-2 text-xs font-bold text-ink transition hover:bg-emerald-400 disabled:opacity-50"
                       >
                         Selesai
                       </button>
                     )}
-                    {(b.status === "pending" || b.status === "confirmed") && (
+                    {(b.status === "confirmed" || b.status === "started") && (
                       <button
                         type="button"
                         disabled={busyId === b.id}
