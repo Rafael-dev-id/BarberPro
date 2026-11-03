@@ -27,7 +27,7 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
       0
    );
 
-   const pendingCount = all.filter((b) => b.status === "pending").length;
+   const startedCount = all.filter((b) => b.status === "started").length;
 
    // Barber tersibuk (semua waktu, booking tidak batal)
    const counts = new Map<string, number>();
@@ -63,8 +63,8 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
              icon={<Wallet size={18} />}
            />
            <StatCard
-             label="Menunggu Konfirmasi"
-             value={String(pendingCount)}
+             label="Sedang Dikerjakan"
+             value={String(startedCount)}
              icon={<Hourglass size={18} />}
            />
            <StatCard

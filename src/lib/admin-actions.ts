@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { z } from "zod";
 import { sendWhatsAppToAdmin } from "@/lib/whatsapp";
 
-const statusSchema = z.enum(["pending", "confirmed", "done", "cancelled"]);
+const statusSchema = z.enum(["confirmed", "started", "done", "cancelled"]);
 
 export async function updateBookingStatus(bookingId: number, newStatus: string) {
    const supabase = await createSupabaseServerClient();

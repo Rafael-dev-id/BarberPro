@@ -91,6 +91,6 @@ export function buildCustomerBookingMessage(p: {
       `Barber: ${p.barberName}`,
       `Tanggal: ${p.date}`,
       `Jam: ${p.timeLabel} WIB`,
-      "Status: menunggu konfirmasi admin — kami kabari lagi di WhatsApp ini begitu jadwal dikonfirmasi.",
+      "Status: TERKONFIRMASI ✔ — datang 5–10 menit sebelum jam sesi.",
    ].join("\n");
 }
