@@ -3,7 +3,6 @@
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { minutesToTime } from "@/lib/slots";
-import { sendBookingConfirmation } from "@/lib/email";
 import { sendWhatsAppToAdmin, buildBookingMessage } from "@/lib/whatsapp";
 
 const bookingSchema = z.object({
@@ -13,7 +12,6 @@ const bookingSchema = z.object({
    slotMinutes: z.number().int().min(0).max(23 * 60 + 59),
    customerName: z.string().trim().min(3),
    customerPhone: z.string().regex(/^\+628\d{8,11}$/),
-   customerEmail: z.string().trim().regex(/^\S+@\S+\.\S+$/),
    customerNotes: z.string().trim().max(300),
 });
 
@@ -73,7 +71,6 @@ export async function createBooking(input: BookingInput) {
       barber_id: data.barberId,
       customer_name: data.customerName,
       customer_phone: data.customerPhone,
-      customer_email: data.customerEmail,
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
       starts_at: minutesToIso(data.date, data.slotMinutes),
       ends_at: minutesToIso(data.date, data.slotMinutes + service.duration),
@@ -108,17 +105,9 @@ export async function createBooking(input: BookingInput) {
       return { ok: false as const, message: "Gagal menyimpan booking. Coba lagi" };
    }
 
-   const [emailResult, waResult] = await Promise.allSettled([
-      sendBookingConfirmation({
-         toEmail: data.customerEmail,
-         customerName: data.customerName,
-         serviceName: service.name,
-         barberName: barber.name,
-         date: data.date,
-         timeLabel: minutesToTime(data.slotMinutes),
-         status: "pending",
-      }),
-      sendWhatsAppToAdmin(
+   let waOk = false;
+   try {
+      await sendWhatsAppToAdmin(
          buildBookingMessage({
             customerName: data.customerName,
             customerPhone: data.customerPhone,
@@ -128,22 +117,13 @@ export async function createBooking(input: BookingInput) {
             date: data.date,
             timeLabel: minutesToTime(data.slotMinutes),
          })
-      ),
-   ]);
+      );
+      waOk = true;
+   } catch {}
 
-   const emailOk = emailResult.status === "fulfilled";
-   const waOk = waResult.status === "fulfilled";
-
-   const lines = [
-      "Booking berhasil.",
-      // Ganti tag HTML agar menyatu dengan baik dalam satu string
-      emailOk ? "Email konfirmasi terkirim." : null,
-      waOk ? "Admin sudah diberitahu via whatsapp." : "Gagal mengirim notif ke admin.",
-      emailOk ? "<small class='text-gray-500 block mt-1'>Periksa folder spam jika notif email tidak masuk.</small>" : null,
-   ];
-   
-   // Membuang nilai null/kosong dan menggabungkannya dengan enter
-   const message = lines.filter(Boolean).join("\n");
+   const message = waOk
+      ? "Booking berhasil.\nAdmin sudah diberitahu via whatsapp."
+      : "Booking berhasil.\nGagal mengirim notif ke admin.";
    
    return { ok: true as const, message };
 }

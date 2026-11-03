@@ -20,7 +20,6 @@ interface BookingFormProps {
 interface FormErrors {
   name?: string;
   phone?: string;
-  email?: string;
 }
 
 type SubmitStatus = "idle" | "loading" | "success" | "error";
@@ -37,7 +36,6 @@ export default function BookingForm({
 }: BookingFormProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
@@ -52,9 +50,6 @@ export default function BookingForm({
 
     if (customerName.trim().length < 3) {
       newErrors.name = "Nama minimal 3 karakter.";
-    }
-    if (!/^\S+@\S+\.\S+$/.test(customerEmail.trim())) {
-      newErrors.email = "Email tidak valid. Contoh: nama@gmail.com";
     }
     if (!isValidIndonesianPhone(customerPhone)) {
       newErrors.phone = "Nomor tidak valid. Contoh: 081234567890";
@@ -76,7 +71,6 @@ export default function BookingForm({
       slotMinutes,
       customerName: customerName.trim(),
       customerPhone: normalizePhone(customerPhone),
-      customerEmail: customerEmail.trim(),
       customerNotes: customerNotes.trim(),
     });
 
@@ -89,7 +83,6 @@ export default function BookingForm({
   function resetForm() {
      setCustomerName("");
      setCustomerPhone("");
-     setCustomerEmail("");
      setCustomerNotes("");
      setErrors({});
      setStatus("idle");
@@ -144,8 +137,9 @@ export default function BookingForm({
            <h2 className="font-display text-lg font-semibold">
               Booking Berhasil
            </h2>
-           <div className="mt-3 rounded-xl bg-emerald-50 p-5 text-sm text-emerald-700 whitespace-pre-line lh-3 text-base/7 tracking-wide"
-              dangerouslySetInnerHTML={{ __html: serverMessage }} />
+           <div className="mt-3 rounded-xl bg-emerald-50 p-5 text-sm text-emerald-700 whitespace-pre-line lh-3 text-base/7 tracking-wide">
+              {serverMessage}
+           </div>
 
            <button
               type="button"
@@ -190,22 +184,6 @@ export default function BookingForm({
             className="input-premium"
           />
           {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="email" className="label-premium">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={customerEmail}
-            onChange={(e) => {
-              setCustomerEmail(e.target.value);
-              clearError("email");
-            }}
-            placeholder="nama@gmail.com"
-            className="input-premium"
-          />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
         </div>
 
         <div>

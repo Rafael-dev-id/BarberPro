@@ -115,7 +115,7 @@ export default async function LandingPage() {
               <h3 className="mt-4 font-bold">Amankan Jam Kamu</h3>
               <p className="mt-2 text-sm text-cream/60">
                 Slot real-time: yang kamu lihat, itu yang kamu dapat.
-                Konfirmasi langsung masuk ke HP dan emailmu.
+                Notifikasi booking langsung masuk ke WhatsApp toko.
               </p>
             </div>
             <div className="rounded-2xl border border-cream/10 p-6">

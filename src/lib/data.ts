@@ -12,11 +12,6 @@ export const STORE = {
    // Janji singkat yang menempel pada nama.
    tagline: "Barbershop Premium, Booking Tanpa Antre",
 
-   // Nama pengirim email konfirmasi.
-   // Alamat emailnya tetap barberpro@mail.rrdevs.my.id (sudah terverifikasi Resend);
-   // yang mengikuti nama toko hanya "nama pengirim"-nya.
-   fromName: "BarberPro",
-
    // Baris kredit kecil di footer: jujur sekaligus iklan berjalan.
    credit: "Didukung BarberPro System oleh RR Devs",
    
