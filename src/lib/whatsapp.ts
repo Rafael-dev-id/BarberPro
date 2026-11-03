@@ -86,11 +86,11 @@ export function buildCustomerBookingMessage(p: {
    return [
       p.storeName,
       "",
-      `Halo ${p.customerName}, booking kamu sudah kami catat ✔`,
+      `Halo ${p.customerName}, booking kamu sudah kami catat ✅`,
       `Layanan: ${p.serviceName}`,
       `Barber: ${p.barberName}`,
       `Tanggal: ${p.date}`,
       `Jam: ${p.timeLabel} WIB`,
-      "Status: TERKONFIRMASI ✔ — datang 5–10 menit sebelum jam sesi.",
+      "Status: TERKONFIRMASI ✅ — datang 5–10 menit sebelum jam sesi.",
    ].join("\n");
 }
