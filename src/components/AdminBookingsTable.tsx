@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
+import { isTooCloseToCancel } from "@/lib/slots";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
@@ -361,14 +362,19 @@ export default function AdminBookingsTable({
               rows.map((b) => (
                 <tr key={b.id} className="border-b border-cream/5">
                   <td className="py-2 pr-3">
-                    {new Date(b.starts_at).toLocaleDateString("id-ID", {
+                    {new Intl.DateTimeFormat("id-ID", {
                       weekday: "short",
                       day: "2-digit",
                       month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
                       timeZone: "Asia/Jakarta",
-                    })}
+                    })
+                      .formatToParts(new Date(b.starts_at))
+                      .map((part) =>
+                        part.type === "month" ? part.value.toLowerCase() : part.value
+                      )
+                      .join("")}
                   </td>
                   <td className="py-2 pr-3">
                     {b.customer_name}
@@ -393,6 +399,11 @@ export default function AdminBookingsTable({
                     >
                       {b.status}
                     </span>
+                    {b.status === "confirmed" && isTooCloseToCancel(b.starts_at) && (
+                      <span className="ml-1 rounded-full bg-amber-400/15 px-2 py-1 text-[10px] font-bold normal-case tracking-normal text-amber-200">
+                        mepet
+                      </span>
+                    )}
                   </td>
                   <td className="py-2">
                     {b.status === "pending" && (

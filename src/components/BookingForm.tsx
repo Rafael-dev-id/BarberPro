@@ -132,7 +132,7 @@ export default function BookingForm({
             {barberName || "Pilih barber"}
           </li>
           <li className={date ? "text-ink" : "text-ink/40"}>
-            {date || "Pilih tanggal"}
+            {date ? dateLabel ?? date : "Pilih tanggal"}
           </li>
         </ul>
         <p className="mt-5 rounded-xl bg-ink/5 p-3 text-xs text-ink/50">

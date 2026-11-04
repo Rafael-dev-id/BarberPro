@@ -1,3 +1,8 @@
+export const MAX_BOOKING_DAYS = 14;
+export const LATE_GRACE_MINUTES = 10;
+export const CANCEL_WINDOW_MINUTES = 30;
+export const SLOT_INTERVAL_MINUTES = 15;
+
 export function timeToMinutes(time: string): number {
    const [hours, minutes] = time.split(":").map(Number);
    return hours * 60 + minutes;
@@ -15,7 +20,7 @@ export function generateSlots(
    startMinutes: number,
    endMinutes: number,
    durationMinutes: number,
-   intervalMinutes: number = 30
+   intervalMinutes: number = SLOT_INTERVAL_MINUTES
 ): number[] {
    const slots: number[] = [];
 
@@ -37,5 +42,15 @@ export function filterPastSlots(slots: number[], dateStr: string): number[] {
    if (dateStr !== today) return slots;
 
    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-   return slots.filter((slot) => slot > nowMinutes);
+   return slots.filter((slot) => slot > nowMinutes - LATE_GRACE_MINUTES);
+}
+
+export function isTooCloseToCancel(
+   startsAtIso: string,
+   nowMs: number = Date.now()
+): boolean {
+   return (
+      nowMs >=
+      new Date(startsAtIso).getTime() - CANCEL_WINDOW_MINUTES * 60_000
+   );
 }
