@@ -20,9 +20,9 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
       return t >= dayStart && t <= dayEnd;
    });
 
-   const activeToday = todayBookings.filter((b) => b.status !== "cancelled");
+   const doneToday = todayBookings.filter((b) => b.status === "done");
 
-   const revenueToday = activeToday.reduce(
+   const revenueToday = doneToday.reduce(
       (total, b) => total + (b.services?.price ?? 0),
       0
    );
@@ -60,6 +60,7 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
            <StatCard
              label="Pendapatan Hari Ini"
              value={formatRupiah(revenueToday)}
+             sub={`${doneToday.length} sesi selesai`}
              icon={<Wallet size={18} />}
            />
            <StatCard
