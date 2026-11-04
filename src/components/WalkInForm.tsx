@@ -263,7 +263,7 @@ export default function WalkInForm({
         <label className="mt-4 flex items-center gap-2 text-xs text-cream/70">
           <input
             type="checkbox"
-            checked={!!customerPhone.trim()}
+            checked={sendWa}
             onChange={(event) => setSendWa(event.target.checked)}
             className="accent-gold"
           />
