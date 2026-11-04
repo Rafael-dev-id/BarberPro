@@ -5,8 +5,9 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
-import { type BookingRow } from "@/lib/types";
+import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
+import WalkInForm from "@/components/WalkInForm";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-400/15 text-yellow-300",
@@ -21,8 +22,14 @@ const fmtDay = (d: Date) =>
 
 export default function AdminBookingsTable({
   initialBookings,
+  services,
+  barbers,
+  workingHours,
 }: {
   initialBookings: BookingRow[];
+  services: Service[];
+  barbers: Barber[];
+  workingHours: WorkingHour[];
 }) {
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -35,6 +42,9 @@ export default function AdminBookingsTable({
   const [customRange, setCustomRange] = useState<Value | null>(null);
   const [live, setLive] = useState<string>("MENYAMBUNG…");
   const [page, setPage] = useState<number>(1);
+  const [showWalkIn, setShowWalkIn] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
+  const [walkInMessage, setWalkInMessage] = useState("");
 
   async function reload() {
     const supabase = createSupabaseBrowserClient();
@@ -63,7 +73,9 @@ export default function AdminBookingsTable({
   useEffect(() => {
     const timer = setTimeout(() => {
        setMounted(true);
+       setCurrentTime(Date.now());
     }, 0);
+    const clockTimer = setInterval(() => setCurrentTime(Date.now()), 30_000);
 
     const supabase = createSupabaseBrowserClient();
     const channel = supabase
@@ -80,6 +92,7 @@ export default function AdminBookingsTable({
     return () => {
       supabase.removeChannel(channel);
       clearTimeout(timer);
+      clearInterval(clockTimer);
     };
   }, []);
 
@@ -165,12 +178,46 @@ export default function AdminBookingsTable({
       <AdminStats bookings={bookings} />
 
       <div className="flex justify-between items-center pt-8 pb-3">
-         <h2 className="font-display text-xl font-semibold">Semua Booking</h2>
+         <div className="flex flex-wrap items-center gap-3">
+           <h2 className="font-display text-xl font-semibold">Semua Booking</h2>
+           <button
+             type="button"
+             onClick={() => {
+               if (!showWalkIn) setWalkInMessage("");
+               setShowWalkIn(!showWalkIn);
+             }}
+             className="rounded-xl border border-gold px-3 py-2 text-xs font-bold text-gold-300 hover:bg-gold/10"
+           >
+             {showWalkIn ? "Tutup walk-in" : "Tambah walk-in"}
+           </button>
+         </div>
          <p className="text-[10px] uppercase tracking-widest text-cream/40">
            Kanal live: <span className="font-bold text-cream/70">{live}</span>
          </p>
       </div>
       
+      {showWalkIn && (
+        <WalkInForm
+          services={services}
+          barbers={barbers}
+          workingHours={workingHours}
+          onSuccess={(message) => {
+            setWalkInMessage(message);
+            setShowWalkIn(false);
+          }}
+        />
+      )}
+      {walkInMessage && (
+        <p
+          role="status"
+          className={`mb-4 text-sm ${
+            walkInMessage.includes("gagal") ? "text-amber-300" : "text-emerald-300"
+          }`}
+        >
+          {walkInMessage}
+        </p>
+      )}
+
       {/* S5: mount hanya di klien — kalender tidak boleh dirender server. */}
       {mounted && range === "custom" && (
         <DateRangePicker onSendRange={handleSetCustomRange} />
@@ -264,7 +311,11 @@ export default function AdminBookingsTable({
                   </td>
                   <td className="py-2 pr-3">
                     {b.customer_name}
-                    <span className="block text-xs text-cream/50">{b.customer_phone}</span>
+                    <span className="block text-xs text-cream/50">
+                      {b.customer_phone.startsWith("walkin-")
+                        ? "Tanpa nomor"
+                        : b.customer_phone}
+                    </span>
                   </td>
                   <td className="py-2 pr-3">
                     {b.services?.name ?? "-"}
@@ -300,7 +351,10 @@ export default function AdminBookingsTable({
                         onClick={() => handleStatus(b.id, "started")}
                         className="rounded-xl bg-sky-500 p-3 py-2 text-xs font-bold text-ink transition hover:bg-sky-400 disabled:opacity-50"
                       >
-                        Mulai
+                        {currentTime !== null &&
+                        new Date(b.starts_at).getTime() <= currentTime
+                          ? "Mulai sekarang"
+                          : "Mulai"}
                       </button>
                     )}
                     {b.status === "started" && (
