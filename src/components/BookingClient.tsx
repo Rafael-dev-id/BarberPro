@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Barber, Service, WorkingHour } from "@/lib/types";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, formatTanggalLabel } from "@/lib/format";
 import {
   generateSlots,
   filterPastSlots,
@@ -23,9 +23,44 @@ interface BookingClientProps {
   workingHours: WorkingHour[];
 }
 
+interface SmartDateNote {
+  sourceDate: string;
+  targetDate: string;
+}
+
 function isSlotTaken(slot: number, duration: number, ranges: BookedRange[]) {
   const slotEnd = slot + duration;
   return ranges.some((r) => slot < r.endMinutes && slotEnd > r.startMinutes);
+}
+
+function listSmartCandidateDates(workingHours: WorkingHour[]): string[] {
+  const now = new Date();
+  const today = now.toLocaleDateString("en-CA");
+  const candidates: string[] = [];
+
+  for (let offset = 0; offset <= 7; offset++) {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + offset);
+
+    const dayHours = workingHours.filter((wh) => wh.weekday === date.getDay());
+    if (dayHours.length === 0) continue;
+
+    if (
+      offset === 0 &&
+      !dayHours.some(
+        (wh) =>
+          now.getHours() * 60 + now.getMinutes() <
+          timeToMinutes(wh.end_time)
+      )
+    ) {
+      continue;
+    }
+
+    candidates.push(date.toLocaleDateString("en-CA"));
+  }
+
+  return candidates.length > 0 ? candidates : [today];
 }
 
 export default function BookingClient({
@@ -35,11 +70,28 @@ export default function BookingClient({
 }: BookingClientProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(null);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState(
+    () => listSmartCandidateDates(workingHours)[0]
+  );
+  const [dateTouched, setDateTouched] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
+  const [bookedRangesFor, setBookedRangesFor] = useState<{
+    barberId: number;
+    date: string;
+    refreshKey: number;
+  } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [dateNote, setDateNote] = useState("");
+  const [smartNote, setSmartNote] = useState<SmartDateNote | null>(null);
+  const [sameDayOffer, setSameDayOffer] = useState<{
+    barberId: number;
+    barberName: string;
+    timeMinutes: number;
+  } | null>(null);
+  const dateTouchedRef = useRef(false);
+  const selectedBarberRef = useRef<number | null>(null);
+  const initialProbe = useRef({ services, workingHours, selectedDate });
 
   // Ambil tanggal hari ini
   const todayObj = new Date();
@@ -79,13 +131,263 @@ export default function BookingClient({
     let cancelled = false;
 
     getBookedSlots(selectedBarberId, selectedDate).then((ranges) => {
-      if (!cancelled) setBookedRanges(ranges);
+      if (!cancelled) {
+        setBookedRanges(ranges);
+        setBookedRangesFor({ barberId: selectedBarberId, date: selectedDate, refreshKey });
+      }
     });
 
     return () => {
       cancelled = true;
     };
   }, [selectedBarberId, selectedDate, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function findAvailableDate() {
+      const { services: initialServices, workingHours: initialWorkingHours, selectedDate: initialDate } =
+        initialProbe.current;
+      if (initialServices.length === 0) return;
+
+      const minDuration = Math.min(...initialServices.map((service) => service.duration));
+      const candidates = listSmartCandidateDates(initialWorkingHours);
+      const todayDate = new Date().toLocaleDateString("en-CA");
+
+      for (const candidate of candidates) {
+        if (cancelled || dateTouchedRef.current || selectedBarberRef.current !== null) {
+          return;
+        }
+
+        const now = new Date();
+        const todayMinutes = now.getHours() * 60 + now.getMinutes();
+        const weekday = new Date(`${candidate}T00:00:00`).getDay();
+        const dayHours = initialWorkingHours.filter(
+          (wh) =>
+            wh.weekday === weekday &&
+            (candidate !== todayDate || todayMinutes < timeToMinutes(wh.end_time))
+        );
+        const hoursByBarber = new Map<number, WorkingHour[]>();
+
+        for (const hour of dayHours) {
+          const hours = hoursByBarber.get(hour.barber_id) ?? [];
+          hours.push(hour);
+          hoursByBarber.set(hour.barber_id, hours);
+        }
+
+        const barberAvailability = await Promise.all(
+          Array.from(hoursByBarber.entries()).map(async ([barberId, hours]) => {
+            const ranges = await getBookedSlots(barberId, candidate);
+            return hours.some((hour) =>
+              filterPastSlots(
+                generateSlots(
+                  timeToMinutes(hour.start_time),
+                  timeToMinutes(hour.end_time),
+                  minDuration
+                ),
+                candidate
+              ).some((slot) => !isSlotTaken(slot, minDuration, ranges))
+            );
+          })
+        );
+
+        if (cancelled || dateTouchedRef.current || selectedBarberRef.current !== null) {
+          return;
+        }
+
+        if (barberAvailability.some(Boolean)) {
+          if (candidate !== initialDate) setSelectedDate(candidate);
+          if (candidate !== todayDate) {
+            setSmartNote({ sourceDate: todayDate, targetDate: candidate });
+          } else {
+            setSmartNote(null);
+          }
+          return;
+        }
+      }
+    }
+
+    void findAvailableDate();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      selectedServiceId === null ||
+      selectedBarberId === null ||
+      !selectedDate ||
+      !selectedService ||
+      bookedRangesFor?.barberId !== selectedBarberId ||
+      bookedRangesFor.date !== selectedDate ||
+      bookedRangesFor.refreshKey !== refreshKey
+    ) {
+      return;
+    }
+
+    const availableSlots = slots.filter(
+      (slot) => !isSlotTaken(slot, selectedService.duration, bookedRanges)
+    );
+    if (availableSlots.length > 0) return;
+
+    let cancelled = false;
+    const barberId = selectedBarberId;
+    const serviceDuration = selectedService.duration;
+
+    async function findBarberDate() {
+      const todayDate = new Date().toLocaleDateString("en-CA");
+      const todayMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      const weekday = new Date(`${selectedDate}T00:00:00`).getDay();
+      const sameDayBarbers = barbers.flatMap((barber) => {
+        if (barber.id === barberId) return [];
+
+        const hours = workingHours.filter(
+          (hour) =>
+            hour.barber_id === barber.id &&
+            hour.weekday === weekday &&
+            (selectedDate !== todayDate ||
+              todayMinutes < timeToMinutes(hour.end_time))
+        );
+        return hours.length > 0 ? [{ barber, hours }] : [];
+      });
+
+      const sameDayAvailability = await Promise.all(
+        sameDayBarbers.map(async ({ barber, hours }) => {
+          const ranges = await getBookedSlots(barber.id, selectedDate);
+          const availableSlots = hours
+            .flatMap((hour) =>
+              filterPastSlots(
+                generateSlots(
+                  timeToMinutes(hour.start_time),
+                  timeToMinutes(hour.end_time),
+                  serviceDuration
+                ),
+                selectedDate
+              )
+            )
+            .filter((slot) => !isSlotTaken(slot, serviceDuration, ranges));
+          const timeMinutes = Math.min(...availableSlots);
+
+          return Number.isFinite(timeMinutes)
+            ? { barberId: barber.id, barberName: barber.name, timeMinutes }
+            : null;
+        })
+      );
+
+      if (cancelled) return;
+
+      let nearestOffer: {
+        barberId: number;
+        barberName: string;
+        timeMinutes: number;
+      } | null = null;
+      for (const offer of sameDayAvailability) {
+        if (
+          offer &&
+          (nearestOffer === null ||
+            offer.timeMinutes < nearestOffer.timeMinutes)
+        ) {
+          nearestOffer = offer;
+        }
+      }
+
+      if (nearestOffer) {
+        setSameDayOffer(nearestOffer);
+        return;
+      }
+
+      setSameDayOffer(null);
+      if (dateTouched || dateTouchedRef.current) return;
+
+      const startDate = new Date(`${selectedDate}T00:00:00`);
+
+      for (let offset = 1; offset <= 7; offset++) {
+        const candidateDate = new Date(startDate);
+        candidateDate.setDate(candidateDate.getDate() + offset);
+        const candidate = candidateDate.toLocaleDateString("en-CA");
+        const now = new Date();
+        const todayMinutes = now.getHours() * 60 + now.getMinutes();
+        const candidateWeekday = candidateDate.getDay();
+        const dayHours = workingHours.filter(
+          (hour) =>
+            hour.barber_id === barberId &&
+            hour.weekday === candidateWeekday &&
+            (candidate !== todayDate ||
+              todayMinutes < timeToMinutes(hour.end_time))
+        );
+        if (dayHours.length === 0) continue;
+
+        const ranges = await getBookedSlots(barberId, candidate);
+        const hasAvailableSlot = dayHours.some((hour) =>
+          filterPastSlots(
+            generateSlots(
+              timeToMinutes(hour.start_time),
+              timeToMinutes(hour.end_time),
+              serviceDuration
+            ),
+            candidate
+          ).some((slot) => !isSlotTaken(slot, serviceDuration, ranges))
+        );
+
+        if (cancelled || dateTouchedRef.current) return;
+
+        if (hasAvailableSlot) {
+          setSelectedDate(candidate);
+          setSmartNote(
+            candidate === todayDate
+              ? null
+              : { sourceDate: selectedDate, targetDate: candidate }
+          );
+          return;
+        }
+      }
+    }
+
+    void findBarberDate();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedServiceId,
+    selectedBarberId,
+    selectedDate,
+    bookedRanges,
+    dateTouched,
+    refreshKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedServiceId === null ||
+      selectedBarberId === null ||
+      !selectedDate
+    ) {
+      return;
+    }
+
+    const availableSlots = slots.filter(
+      (slot) =>
+        selectedService !== undefined &&
+        !isSlotTaken(slot, selectedService.duration, bookedRanges)
+    );
+    const nextSlot = availableSlots[0] ?? null;
+
+    setSelectedSlot((currentSlot) => {
+      if (currentSlot !== null && availableSlots.includes(currentSlot)) {
+        return currentSlot;
+      }
+
+      return currentSlot === nextSlot ? currentSlot : nextSlot;
+    });
+  }, [
+    selectedServiceId,
+    selectedBarberId,
+    selectedDate,
+    bookedRanges,
+    refreshKey,
+  ]);
 
   const validSelectedSlot =
     selectedSlot !== null &&
@@ -97,11 +399,14 @@ export default function BookingClient({
   function chooseService(id: number) {
     setSelectedServiceId(id);
     setSelectedSlot(null);
+    setSameDayOffer(null);
   }
 
   function chooseBarber(id: number) {
+    selectedBarberRef.current = id;
     setSelectedBarberId(id);
     setSelectedSlot(null);
+    setSameDayOffer(null);
   }
 
   function chooseDate(value: string) {
@@ -111,6 +416,10 @@ export default function BookingClient({
     };
 
     setDateNote("");
+    dateTouchedRef.current = true;
+    setDateTouched(true);
+    setSmartNote(null);
+    setSameDayOffer(null);
     setSelectedDate(value);
     setSelectedSlot(null);
   }
@@ -208,12 +517,61 @@ export default function BookingClient({
               onChange={(event) => chooseDate(event.target.value)}
               className="input-premium mt-4"
             />
+            {selectedDate && (
+              <p className="mt-2 text-sm text-ink/60">
+                {formatTanggalLabel(selectedDate)}
+              </p>
+            )}
             {dateNote && <p className="mt-2 text-xs text-red-600">{dateNote}</p>}
+            {!dateTouched && selectedDate !== today && smartNote && (
+              <p className="mt-2 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
+                <span className="font-semibold text-sky-900">
+                  {formatTanggalLabel(smartNote.sourceDate)}
+                </span>
+                <span className="mx-1">
+                  sudah penuh untuk semua kapster — ditampilkan
+                </span>
+                <span className="mx-1 font-semibold text-sky-900">
+                  {formatTanggalLabel(smartNote.targetDate)}
+                </span>
+                .
+              </p>
+            )}
           </section>
 
           {selectedService && selectedBarber && selectedDate && (
             <section>
               <h2 className="eyebrow">4 · Pilih Jam</h2>
+              <p className="mt-1 text-xs text-ink/50">
+                Slot untuk {formatTanggalLabel(selectedDate)}
+              </p>
+              {sameDayOffer &&
+                slots.every((slot) =>
+                  isSlotTaken(slot, selectedService.duration, bookedRanges)
+                ) && (
+                <div className="mt-4 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
+                  <p className="font-semibold">
+                    Slot untuk {selectedBarber.name} sudah habis.
+                  </p>
+                  <p className="mt-1">{formatTanggalLabel(selectedDate)}</p>
+                  <p className="mt-2">
+                    {sameDayOffer.barberName} masih punya slot.
+                  </p>
+                  <p>
+                    Slot terdekat: {minutesToTime(sameDayOffer.timeMinutes)} WIB.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chooseBarber(sameDayOffer.barberId);
+                      setSameDayOffer(null);
+                    }}
+                    className="mt-2 rounded-full border border-gold px-3 py-1.5 font-semibold text-ink hover:bg-gold/10"
+                  >
+                    Ganti ke {sameDayOffer.barberName} · {minutesToTime(sameDayOffer.timeMinutes)} WIB
+                  </button>
+                </div>
+              )}
 
               {workingHour ? (
                 slots.length > 0 ? (
@@ -257,10 +615,8 @@ export default function BookingClient({
                       )}
                    </>
                 ) : (
-                  <p className="mt-4 text-sm text-ink/50">
-                     {selectedDate === today
-                        ? "Jam operasional hari ini sudah berakhir. Silakan pilih tanggal lain."
-                        : "Jam operasional untuk tanggal ini belum diatur. Silakan pilih tanggal lain atau hubungi kami."}
+                   <p className="mt-4 text-sm text-ink/50">
+                     Tidak ada slot tersisa untuk {selectedBarber.name} pada {formatTanggalLabel(selectedDate)}.
                    </p>
                 )
               ) : (
@@ -283,8 +639,12 @@ export default function BookingClient({
             serviceName={selectedService?.name ?? ""}
             barberName={selectedBarber?.name ?? ""}
             date={selectedDate}
+            dateLabel={formatTanggalLabel(selectedDate)}
             slotMinutes={validSelectedSlot ?? 0}
-            onBooked={() => setRefreshKey((k) => k + 1)}
+            onBooked={() => {
+              setSameDayOffer(null);
+              setRefreshKey((k) => k + 1);
+            }}
           />
         </div>
       </div>

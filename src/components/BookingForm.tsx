@@ -13,6 +13,7 @@ interface BookingFormProps {
   serviceName: string;
   barberName: string;
   date: string;
+  dateLabel?: string;
   slotMinutes: number;
   onBooked: () => void;
 }
@@ -31,6 +32,7 @@ export default function BookingForm({
   serviceName,
   barberName,
   date,
+  dateLabel,
   slotMinutes,
   onBooked,
 }: BookingFormProps) {
@@ -165,7 +167,7 @@ export default function BookingForm({
       <div className="mt-4 rounded-xl bg-ink p-4 text-cream">
         <p className="text-sm font-bold text-gold">{serviceName}</p>
         <p className="mt-1 text-xs text-cream/70">
-          {barberName} · {date} · {minutesToTime(slotMinutes)} WIB
+          {barberName} · {dateLabel ?? date} · {minutesToTime(slotMinutes)} WIB
         </p>
       </div>
 

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { minutesToTime } from "@/lib/slots";
+import { formatTanggalPanjang } from "@/lib/format";
 import { STORE } from "@/lib/data";
 import {
    sendWhatsAppToAdmin,
@@ -119,7 +120,7 @@ export async function createBooking(input: BookingInput) {
             customerNotes: data.customerNotes,
             serviceName: service.name,
             barberName: barber.name,
-            date: data.date,
+            date: formatTanggalPanjang(data.date),
             timeLabel: minutesToTime(data.slotMinutes),
          })
       ),
@@ -130,7 +131,7 @@ export async function createBooking(input: BookingInput) {
             customerName: data.customerName,
             serviceName: service.name,
             barberName: barber.name,
-            date: data.date,
+            date: formatTanggalPanjang(data.date),
             timeLabel: minutesToTime(data.slotMinutes),
          })
       ),
