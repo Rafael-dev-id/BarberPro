@@ -94,3 +94,21 @@ export function buildCustomerBookingMessage(p: {
       "Status: TERKONFIRMASI ✅ — datang 5–10 menit sebelum jam sesi.",
    ].join("\n");
 }
+
+export function buildCustomerStatusMessage(p: {
+   storeName: string;
+   customerName: string;
+   barberName: string;
+   serviceName: string;
+   dateLabel: string;
+   timeLabel: string;
+   status: "started" | "done" | "cancelled";
+}): string {
+   if (p.status === "started") {
+      return `Halo ${p.customerName}, giliran kamu sudah tiba — silakan datang ke kapster ${p.barberName} untuk mulai cukur.`;
+   }
+   if (p.status === "done") {
+      return `Sesi kamu bersama ${p.barberName} sudah SELESAI ✅ Terima kasih sudah berkunjung ke ${p.storeName} — sampai jumpa di potongan berikutnya!`;
+   }
+   return `Booking kamu pada ${p.dateLabel} jam ${p.timeLabel} WIB DIBATALKAN. Maaf atas ketidaknyamanannya — kamu bisa booking ulang kapan saja.`;
+}

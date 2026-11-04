@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { z } from "zod";
 import {
-   sendWhatsAppToAdmin,
    sendWhatsAppToCustomer,
    buildCustomerBookingMessage,
+   buildCustomerStatusMessage,
 } from "@/lib/whatsapp";
 import { getBookedSlots, minutesToIso } from "@/lib/booking-actions";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
-import { formatTanggalPanjang } from "@/lib/format";
+import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
 import { minutesToTime, timeToMinutes } from "@/lib/slots";
 import { STORE } from "@/lib/data";
 
@@ -44,24 +44,60 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
        };
      }
 
-  try {
-     const { data: booking } = await supabase
-       .from("bookings")
-       .select("customer_name, services(name)")
-       .eq("id", bookingId)
-       .single();
+  const { data: booking } = await supabase
+     .from("bookings")
+     .select("customer_name, customer_phone, starts_at, services(name), barbers(name)")
+     .eq("id", bookingId)
+     .single();
 
-     if (booking) {
-       const serviceName = Array.isArray(booking.services)
-         ? booking.services[0]?.name ?? "Layanan"
-         : (booking.services as {name?: string})?.name ?? "Layanan";
+  if (booking && !booking.customer_phone.startsWith("walkin-")) {
+     const serviceName = Array.isArray(booking.services)
+       ? booking.services[0]?.name ?? "Layanan"
+       : (booking.services as { name?: string } | null)?.name ?? "Layanan";
+     const barberName = Array.isArray(booking.barbers)
+       ? booking.barbers[0]?.name ?? "Kapster"
+       : (booking.barbers as { name?: string } | null)?.name ?? "Kapster";
+     const startsAt = new Date(booking.starts_at);
+     const dateParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+     }).formatToParts(startsAt);
+     const datePart = (type: string) =>
+        dateParts.find((part) => part.type === type)?.value ?? "";
+     const date = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+     const timeLabel = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+     }).format(startsAt);
 
-       await sendWhatsAppToAdmin(
-         `🔄 STATUS BERUBAH\n\nBooking ${booking.customer_name} (${serviceName})\nStatus baru: ${parsed.data.toUpperCase()}`
-       );
+     try {
+        const message =
+           parsed.data === "confirmed"
+              ? buildCustomerBookingMessage({
+                   storeName: STORE.name,
+                   customerName: booking.customer_name,
+                   serviceName,
+                   barberName,
+                   date: formatTanggalPanjang(date),
+                   timeLabel,
+                })
+              : buildCustomerStatusMessage({
+                   storeName: STORE.name,
+                   customerName: booking.customer_name,
+                   barberName,
+                   serviceName,
+                   dateLabel: formatTanggalLabel(date),
+                   timeLabel,
+                   status: parsed.data,
+                });
+        await sendWhatsAppToCustomer(booking.customer_phone, message);
+     } catch {
+        // Gagal mengirim WhatsApp tidak membatalkan perubahan status.
      }
-  } catch {
-     // Gagal mengirim WhatsApp tidak membatalkan perubahan status
   }
 
   revalidatePath("/admin");

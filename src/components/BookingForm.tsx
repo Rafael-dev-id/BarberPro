@@ -16,6 +16,7 @@ interface BookingFormProps {
   dateLabel?: string;
   slotMinutes: number;
   onBooked: () => void;
+  onSlotConflict: () => void;
 }
 
 interface FormErrors {
@@ -35,6 +36,7 @@ export default function BookingForm({
   dateLabel,
   slotMinutes,
   onBooked,
+  onSlotConflict,
 }: BookingFormProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -80,6 +82,9 @@ export default function BookingForm({
     setServerMessage(result.message);
 
     if (result.ok) onBooked();
+    else if (result.message === "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain.") {
+      onSlotConflict();
+    }
   }
 
   function resetForm() {
@@ -92,11 +97,15 @@ export default function BookingForm({
   }
 
   const clearServerNote = useCallback(() => {
-    if (status === "error") {
+    if (
+      status === "error" &&
+      serverMessage !==
+        "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain."
+    ) {
       setStatus("idle");
       setServerMessage("");
     }
-  }, [status]);
+  }, [serverMessage, status]);
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.
   useEffect(() => {

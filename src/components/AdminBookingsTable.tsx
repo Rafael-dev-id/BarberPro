@@ -45,6 +45,7 @@ export default function AdminBookingsTable({
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [walkInMessage, setWalkInMessage] = useState("");
+  const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
 
   async function reload() {
     const supabase = createSupabaseBrowserClient();
@@ -75,7 +76,19 @@ export default function AdminBookingsTable({
        setMounted(true);
        setCurrentTime(Date.now());
     }, 0);
-    const clockTimer = setInterval(() => setCurrentTime(Date.now()), 30_000);
+    const clockTimer = setInterval(() => {
+      setCurrentTime(Date.now());
+      void reload();
+    }, 30_000);
+
+    const handleFocus = () => {
+      void reload();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const supabase = createSupabaseBrowserClient();
     const channel = supabase
@@ -93,6 +106,8 @@ export default function AdminBookingsTable({
       supabase.removeChannel(channel);
       clearTimeout(timer);
       clearInterval(clockTimer);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -161,9 +176,28 @@ export default function AdminBookingsTable({
     return "Rentang kustom…";
   };
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    if (sortMode === "slot") {
+      return (
+        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime() ||
+        a.id - b.id
+      );
+    }
+
+    const createdAt = (booking: BookingRow) => {
+      if (
+        "created_at" in booking &&
+        typeof booking.created_at === "string"
+      ) {
+        return Date.parse(booking.created_at);
+      }
+      return 0;
+    };
+    return createdAt(b) - createdAt(a) || b.id - a.id;
+  });
+  const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
-  const rows = filtered.slice((pageSafe - 1) * 10, pageSafe * 10);
+  const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
 
   useEffect(() => {
      const timer = setTimeout(() => {
@@ -204,6 +238,7 @@ export default function AdminBookingsTable({
           onSuccess={(message) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
+            void reload();
           }}
         />
       )}
@@ -270,6 +305,32 @@ export default function AdminBookingsTable({
           placeholder="Cari nama / nomor…"
           className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm"
         />
+        <div className="flex w-fit overflow-hidden rounded-xl border border-cream/15">
+          <button
+            type="button"
+            aria-pressed={sortMode === "terbaru"}
+            onClick={() => setSortMode("terbaru")}
+            className={`px-3 py-2 text-xs ${
+              sortMode === "terbaru"
+                ? "bg-gold text-ink"
+                : "text-cream/70 hover:bg-cream/5"
+            }`}
+          >
+            Terbaru dahulu
+          </button>
+          <button
+            type="button"
+            aria-pressed={sortMode === "slot"}
+            onClick={() => setSortMode("slot")}
+            className={`border-l border-cream/15 px-3 py-2 text-xs ${
+              sortMode === "slot"
+                ? "bg-gold text-ink"
+                : "text-cream/70 hover:bg-cream/5"
+            }`}
+          >
+            Urut slot
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
@@ -385,7 +446,7 @@ export default function AdminBookingsTable({
         </table>
 
         <div className="nav-btn flex gap-3 justify-end py-3">
-           <span className="text-cream text-sm">Halaman {pageSafe} dari {pageCount} — [ {filtered.length} booking ]</span>
+           <span className="text-cream text-sm">Halaman {pageSafe} dari {pageCount} — [ {sortedFiltered.length} booking ]</span>
            <button className="btn rounded-xl border border-gold text-xs text-gold-300 disabled:opacity-50 px-3 py-1"
               disabled={pageSafe <= 1}
               onClick={() => setPage(page - 1)}

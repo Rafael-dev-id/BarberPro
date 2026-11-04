@@ -143,6 +143,42 @@ export default function BookingClient({
   }, [selectedBarberId, selectedDate, refreshKey]);
 
   useEffect(() => {
+    if (!selectedBarberId || !selectedDate) return;
+
+    let cancelled = false;
+    const refreshSlots = async () => {
+      try {
+        const ranges = await getBookedSlots(selectedBarberId, selectedDate);
+        if (cancelled) return;
+        setBookedRanges(ranges);
+        setBookedRangesFor({
+          barberId: selectedBarberId,
+          date: selectedDate,
+          refreshKey,
+        });
+      } catch (error) {
+        console.error("Gagal memperbarui ketersediaan slot.", error);
+      }
+    };
+    const handleFocus = () => {
+      void refreshSlots();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshSlots();
+    };
+    const timer = setInterval(() => void refreshSlots(), 30_000);
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [selectedBarberId, selectedDate, refreshKey]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function findAvailableDate() {
@@ -645,6 +681,7 @@ export default function BookingClient({
               setSameDayOffer(null);
               setRefreshKey((k) => k + 1);
             }}
+            onSlotConflict={() => setRefreshKey((k) => k + 1)}
           />
         </div>
       </div>

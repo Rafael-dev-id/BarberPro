@@ -93,7 +93,7 @@ export async function createBooking(input: BookingInput) {
          // 23P01 → exclusion constraint dilanggar → slot bentrok
          return {
             ok: false as const,
-            message: "Slot ini baru saja diambil orang lain. Silahkan pilih jam lain"
+            message: "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain."
          };
       }
 
