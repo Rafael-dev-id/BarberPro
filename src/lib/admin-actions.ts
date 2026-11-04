@@ -3,7 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { z } from "zod";
-import { sendWhatsAppToAdmin } from "@/lib/whatsapp";
+import {
+   sendWhatsAppToCustomer,
+   buildCustomerBookingMessage,
+   buildCustomerStatusMessage,
+} from "@/lib/whatsapp";
+import { getBookedSlots, minutesToIso } from "@/lib/booking-actions";
+import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
+import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
+import { minutesToTime, timeToMinutes } from "@/lib/slots";
+import { STORE } from "@/lib/data";
 
 const statusSchema = z.enum(["confirmed", "started", "done", "cancelled"]);
 
@@ -35,26 +44,199 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
        };
      }
 
-  try {
-     const { data: booking } = await supabase
-       .from("bookings")
-       .select("customer_name, services(name)")
-       .eq("id", bookingId)
-       .single();
+  const { data: booking } = await supabase
+     .from("bookings")
+     .select("customer_name, customer_phone, starts_at, services(name), barbers(name)")
+     .eq("id", bookingId)
+     .single();
 
-     if (booking) {
-       const serviceName = Array.isArray(booking.services)
-         ? booking.services[0]?.name ?? "Layanan"
-         : (booking.services as {name?: string})?.name ?? "Layanan";
+  if (booking && !booking.customer_phone.startsWith("walkin-")) {
+     const serviceName = Array.isArray(booking.services)
+       ? booking.services[0]?.name ?? "Layanan"
+       : (booking.services as { name?: string } | null)?.name ?? "Layanan";
+     const barberName = Array.isArray(booking.barbers)
+       ? booking.barbers[0]?.name ?? "Kapster"
+       : (booking.barbers as { name?: string } | null)?.name ?? "Kapster";
+     const startsAt = new Date(booking.starts_at);
+     const dateParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+     }).formatToParts(startsAt);
+     const datePart = (type: string) =>
+        dateParts.find((part) => part.type === type)?.value ?? "";
+     const date = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+     const timeLabel = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+     }).format(startsAt);
 
-       await sendWhatsAppToAdmin(
-         `🔄 STATUS BERUBAH\n\nBooking ${booking.customer_name} (${serviceName})\nStatus baru: ${parsed.data.toUpperCase()}`
-       );
+     try {
+        const message =
+           parsed.data === "confirmed"
+              ? buildCustomerBookingMessage({
+                   storeName: STORE.name,
+                   customerName: booking.customer_name,
+                   serviceName,
+                   barberName,
+                   date: formatTanggalPanjang(date),
+                   timeLabel,
+                })
+              : buildCustomerStatusMessage({
+                   storeName: STORE.name,
+                   customerName: booking.customer_name,
+                   barberName,
+                   serviceName,
+                   dateLabel: formatTanggalLabel(date),
+                   timeLabel,
+                   status: parsed.data,
+                });
+        await sendWhatsAppToCustomer(booking.customer_phone, message);
+     } catch {
+        // Gagal mengirim WhatsApp tidak membatalkan perubahan status.
      }
-  } catch {
-     // Gagal mengirim WhatsApp tidak membatalkan perubahan status
   }
 
   revalidatePath("/admin");
   return { ok: true as const };
+}
+
+const walkInSchema = z.object({
+   customerName: z.string().trim().min(3),
+   customerPhone: z.string().optional(),
+   serviceId: z.number().int(),
+   barberId: z.number().int(),
+   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+   slotMinutes: z.number().int().min(0).max(1439),
+   startNow: z.boolean(),
+   sendWa: z.boolean(),
+   customerNotes: z.string().trim().max(300).optional(),
+});
+
+export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
+   const supabase = await createSupabaseServerClient();
+   const { data: { user } } = await supabase.auth.getUser();
+   if (!user) {
+      return { ok: false as const, message: "Kamu harus login." };
+   }
+
+   const parsed = walkInSchema.safeParse(input);
+   if (!parsed.success) {
+      return { ok: false as const, message: "Data walk-in tidak valid." };
+   }
+
+   const data = parsed.data;
+   const phoneInput = data.customerPhone?.trim() ?? "";
+   if (phoneInput && !isValidIndonesianPhone(phoneInput)) {
+      return { ok: false as const, message: "Nomor WA tidak valid." };
+   }
+
+   const customerPhone = phoneInput
+      ? normalizePhone(phoneInput)
+      : `walkin-${Date.now()}`;
+   const [year, month, day] = data.date.split("-").map(Number);
+   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+
+   const [serviceResult, barberResult, workingHoursResult] = await Promise.all([
+      supabase
+         .from("services")
+         .select("name, duration")
+         .eq("id", data.serviceId)
+         .single(),
+      supabase
+         .from("barbers")
+         .select("name")
+         .eq("id", data.barberId)
+         .single(),
+      supabase
+         .from("working_hours")
+         .select("start_time, end_time")
+         .eq("barber_id", data.barberId)
+         .eq("weekday", weekday),
+   ]);
+
+   if (serviceResult.error || barberResult.error) {
+      return { ok: false as const, message: "Layanan atau kapster tidak ditemukan." };
+   }
+   if (workingHoursResult.error) {
+      return { ok: false as const, message: "Gagal memeriksa jam kerja kapster." };
+   }
+
+   const service = serviceResult.data;
+   const barber = barberResult.data;
+   const isWithinWorkingHours = workingHoursResult.data.some(
+      (hours) =>
+         data.slotMinutes >= timeToMinutes(hours.start_time) &&
+         data.slotMinutes + service.duration <= timeToMinutes(hours.end_time)
+   );
+   if (!isWithinWorkingHours) {
+      return { ok: false as const, message: "Jam tersebut di luar jam kerja kapster." };
+   }
+
+   let bookedRanges: { startMinutes: number; endMinutes: number }[];
+   try {
+      bookedRanges = await getBookedSlots(data.barberId, data.date);
+   } catch {
+      return { ok: false as const, message: "Gagal memeriksa ketersediaan jam." };
+   }
+   const slotEnd = data.slotMinutes + service.duration;
+   if (
+      bookedRanges.some(
+         (range) =>
+            data.slotMinutes < range.endMinutes &&
+            slotEnd > range.startMinutes
+      )
+   ) {
+      return { ok: false as const, message: "Slot bentrok dengan booking lain. Pilih jam lain." };
+   }
+
+   const startsAt = await minutesToIso(data.date, data.slotMinutes);
+   const endsAt = await minutesToIso(data.date, slotEnd);
+   const { error } = await supabase.from("bookings").insert({
+      customer_name: data.customerName,
+      customer_phone: customerPhone,
+      customer_email: "",
+      service_id: data.serviceId,
+      barber_id: data.barberId,
+      customer_notes: data.customerNotes || null,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      status: data.startNow ? "started" : "confirmed",
+   });
+
+   if (error) {
+      if (error.code === "23P01") {
+         return { ok: false as const, message: "Slot bentrok dengan booking lain. Pilih jam lain." };
+      }
+      if (error.code === "23505") {
+         return { ok: false as const, message: "Nomor ini sudah punya booking aktif di hari yang sama." };
+      }
+      return { ok: false as const, message: "Gagal menyimpan walk-in." };
+   }
+
+   let message = "Walk-in berhasil dicatat.";
+   if (data.sendWa && phoneInput && !data.startNow) {
+      try {
+         await sendWhatsAppToCustomer(
+            customerPhone,
+            buildCustomerBookingMessage({
+               storeName: STORE.name,
+               customerName: data.customerName,
+               serviceName: service.name,
+               barberName: barber.name,
+               date: formatTanggalPanjang(data.date),
+               timeLabel: minutesToTime(data.slotMinutes),
+            })
+         );
+         message = "Walk-in berhasil dicatat dan WA konfirmasi terkirim.";
+      } catch {
+         message = "Walk-in tercatat, tetapi WA konfirmasi gagal dikirim.";
+      }
+   }
+
+   revalidatePath("/admin");
+   return { ok: true as const, message };
 }

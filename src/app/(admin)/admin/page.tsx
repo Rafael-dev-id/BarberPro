@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import AdminBookingsTable from "@/components/AdminBookingsTable";
-import { type BookingRow } from "@/lib/types";
+import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 
 export default async function AdminPage() {
    const supabase = await createSupabaseServerClient();
@@ -24,13 +24,32 @@ export default async function AdminPage() {
          </p>;
    }
 
+   const [servicesResult, barbersResult, workingHoursResult] = await Promise.all([
+      supabase.from("services").select("*").eq("is_active", true),
+      supabase.from("barbers").select("*").eq("is_active", true),
+      supabase.from("working_hours").select("*"),
+   ]);
+
+   if (servicesResult.error || barbersResult.error || workingHoursResult.error) {
+      return (
+         <p className="text-red-500">
+            Gagal memuat data layanan, kapster, atau jam kerja.
+         </p>
+      );
+   }
+
    const all = bookings ?? [];
 
    // ---------- RENDER ----------
    
   return (
     <section>
-      <AdminBookingsTable initialBookings={(all ?? []) as BookingRow[]} />
+      <AdminBookingsTable
+         initialBookings={all as BookingRow[]}
+         services={(servicesResult.data ?? []) as Service[]}
+         barbers={(barbersResult.data ?? []) as Barber[]}
+         workingHours={(workingHoursResult.data ?? []) as WorkingHour[]}
+      />
     </section>
   );
 }

@@ -24,10 +24,14 @@ const bookingSchema = z.object({
 
 export type BookingInput = z.infer<typeof bookingSchema>;
 
-function minutesToIso(date: string, minutes: number): string {
+function toIso(date: string, minutes: number): string {
    const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
    const mm = String(minutes % 60).padStart(2, "0");
    return `${date}T${hh}:${mm}:00+07:00`;
+}
+
+export async function minutesToIso(date: string, minutes: number): Promise<string> {
+   return toIso(date, minutes);
 }
 
 export async function createBooking(input: BookingInput) {
@@ -79,8 +83,8 @@ export async function createBooking(input: BookingInput) {
       customer_name: data.customerName,
       customer_phone: data.customerPhone,
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
-      starts_at: minutesToIso(data.date, data.slotMinutes),
-      ends_at: minutesToIso(data.date, data.slotMinutes + service.duration),
+      starts_at: toIso(data.date, data.slotMinutes),
+      ends_at: toIso(data.date, data.slotMinutes + service.duration),
       status: "confirmed",
    });
 
@@ -89,7 +93,7 @@ export async function createBooking(input: BookingInput) {
          // 23P01 → exclusion constraint dilanggar → slot bentrok
          return {
             ok: false as const,
-            message: "Slot ini baru saja diambil orang lain. Silahkan pilih jam lain"
+            message: "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain."
          };
       }
 
