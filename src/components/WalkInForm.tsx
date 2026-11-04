@@ -40,7 +40,6 @@ export default function WalkInForm({
   const [date, setDate] = useState(today);
   const [slotMinutes, setSlotMinutes] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
-  const [sendWa, setSendWa] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<number[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -116,7 +115,7 @@ export default function WalkInForm({
         date,
         slotMinutes: Number(slotMinutes),
         startNow,
-        sendWa: !startNow && sendWa,
+        sendWa: !startNow && customerPhone.trim() !== "",
         customerNotes,
       });
 
@@ -132,7 +131,6 @@ export default function WalkInForm({
       setDate(today);
       setSlotMinutes("");
       setCustomerNotes("");
-      setSendWa(false);
       onSuccess(result.message);
     } catch {
       setErrorMessage("Walk-in gagal disimpan. Silakan coba lagi.");
@@ -160,10 +158,7 @@ export default function WalkInForm({
           <input
             type="tel"
             value={customerPhone}
-            onChange={(event) => {
-              setCustomerPhone(event.target.value);
-              if (!event.target.value.trim()) setSendWa(false);
-            }}
+            onChange={(event) => setCustomerPhone(event.target.value)}
             className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
           />
         </label>
@@ -258,18 +253,6 @@ export default function WalkInForm({
           />
         </label>
       </div>
-
-      {customerPhone.trim() && (
-        <label className="mt-4 flex items-center gap-2 text-xs text-cream/70">
-          <input
-            type="checkbox"
-            checked={sendWa}
-            onChange={(event) => setSendWa(event.target.checked)}
-            className="accent-gold"
-          />
-          Kirim WA konfirmasi ke pelanggan (untuk simpan ke antre)
-        </label>
-      )}
 
       {errorMessage && (
         <p role="alert" className="mt-3 text-sm text-red-300">
