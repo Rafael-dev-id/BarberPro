@@ -66,6 +66,30 @@ export async function createBooking(input: BookingInput) {
    }
 
    const normalizedPhone = normalizePhone(data.customerPhone);
+   const dayEndDate = new Date(`${data.date}T00:00:00Z`);
+   dayEndDate.setUTCDate(dayEndDate.getUTCDate() + 1);
+   const dayEndIso = `${dayEndDate.toISOString().slice(0, 10)}T00:00:00+07:00`;
+   const { count: sameDayBookingCount, error: sameDayBookingError } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_phone", normalizedPhone)
+      .in("status", ["pending", "confirmed", "started"])
+      .gte("starts_at", `${data.date}T00:00:00+07:00`)
+      .lt("starts_at", dayEndIso);
+
+   if (sameDayBookingError) {
+      return {
+         ok: false as const,
+         message: "Gagal memeriksa booking pada tanggal ini. Silakan coba lagi.",
+      };
+   }
+   if ((sameDayBookingCount ?? 0) > 0) {
+      return {
+         ok: false as const,
+         message: "Nomor ini sudah memiliki booking aktif pada tanggal tersebut. Silakan pilih tanggal lain.",
+      };
+   }
+
    const { count: activeBookingCount, error: activeBookingError } = await supabase
       .from("bookings")
       .select("id", { count: "exact", head: true })
