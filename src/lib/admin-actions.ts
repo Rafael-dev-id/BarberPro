@@ -11,7 +11,12 @@ import {
 import { getBookedSlots, minutesToIso } from "@/lib/booking-actions";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
-import { minutesToTime, timeToMinutes } from "@/lib/slots";
+import {
+   effectiveStart,
+   getJakartaNow,
+   minutesToTime,
+   timeToMinutes,
+} from "@/lib/slots";
 import { STORE } from "@/lib/data";
 
 const statusSchema = z.enum(["confirmed", "started", "done", "cancelled"]);
@@ -129,6 +134,7 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    }
 
    const data = parsed.data;
+   const { date: todayStr, minutes: nowMinutes } = getJakartaNow();
    const phoneInput = data.customerPhone?.trim() ?? "";
    if (phoneInput && !isValidIndonesianPhone(phoneInput)) {
       return { ok: false as const, message: "Nomor WA tidak valid." };
@@ -137,6 +143,32 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    const customerPhone = phoneInput
       ? normalizePhone(phoneInput)
       : `walkin-${Date.now()}`;
+   if (phoneInput) {
+      const dayEndDate = new Date(`${data.date}T00:00:00Z`);
+      dayEndDate.setUTCDate(dayEndDate.getUTCDate() + 1);
+      const dayEndIso = `${dayEndDate.toISOString().slice(0, 10)}T00:00:00+07:00`;
+      const { count: sameDayBookingCount, error: sameDayBookingError } = await supabase
+         .from("bookings")
+         .select("id", { count: "exact", head: true })
+         .eq("customer_phone", customerPhone)
+         .in("status", ["pending", "confirmed", "started"])
+         .gte("starts_at", `${data.date}T00:00:00+07:00`)
+         .lt("starts_at", dayEndIso);
+
+      if (sameDayBookingError) {
+         return {
+            ok: false as const,
+            message: "Gagal memeriksa booking pada tanggal ini. Silakan coba lagi.",
+         };
+      }
+      if ((sameDayBookingCount ?? 0) > 0) {
+         return {
+            ok: false as const,
+            message: "Nomor ini sudah memiliki booking aktif pada tanggal tersebut. Silakan pilih tanggal lain.",
+         };
+      }
+   }
+
    const [year, month, day] = data.date.split("-").map(Number);
    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
@@ -167,10 +199,16 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
 
    const service = serviceResult.data;
    const barber = barberResult.data;
+   const effectiveSlotStart = effectiveStart(
+      data.slotMinutes,
+      nowMinutes,
+      data.date === todayStr
+   );
+   const slotEnd = effectiveSlotStart + service.duration;
    const isWithinWorkingHours = workingHoursResult.data.some(
       (hours) =>
          data.slotMinutes >= timeToMinutes(hours.start_time) &&
-         data.slotMinutes + service.duration <= timeToMinutes(hours.end_time)
+         slotEnd <= timeToMinutes(hours.end_time)
    );
    if (!isWithinWorkingHours) {
       return { ok: false as const, message: "Jam tersebut di luar jam kerja kapster." };
@@ -182,7 +220,7 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    } catch {
       return { ok: false as const, message: "Gagal memeriksa ketersediaan jam." };
    }
-   const slotEnd = data.slotMinutes + service.duration;
+   // Match the stored range: starts_at is the slot; ends_at is the real-time end.
    if (
       bookedRanges.some(
          (range) =>

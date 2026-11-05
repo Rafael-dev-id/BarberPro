@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
+import { isTooCloseToCancel } from "@/lib/slots";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
@@ -43,7 +44,6 @@ export default function AdminBookingsTable({
   const [live, setLive] = useState<string>("MENYAMBUNG…");
   const [page, setPage] = useState<number>(1);
   const [showWalkIn, setShowWalkIn] = useState(false);
-  const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [walkInMessage, setWalkInMessage] = useState("");
   const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
 
@@ -74,10 +74,8 @@ export default function AdminBookingsTable({
   useEffect(() => {
     const timer = setTimeout(() => {
        setMounted(true);
-       setCurrentTime(Date.now());
     }, 0);
     const clockTimer = setInterval(() => {
-      setCurrentTime(Date.now());
       void reload();
     }, 30_000);
 
@@ -361,14 +359,19 @@ export default function AdminBookingsTable({
               rows.map((b) => (
                 <tr key={b.id} className="border-b border-cream/5">
                   <td className="py-2 pr-3">
-                    {new Date(b.starts_at).toLocaleDateString("id-ID", {
+                    {new Intl.DateTimeFormat("id-ID", {
                       weekday: "short",
                       day: "2-digit",
                       month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
                       timeZone: "Asia/Jakarta",
-                    })}
+                    })
+                      .formatToParts(new Date(b.starts_at))
+                      .map((part) =>
+                        part.type === "month" ? part.value.toLowerCase() : part.value
+                      )
+                      .join("")}
                   </td>
                   <td className="py-2 pr-3">
                     {b.customer_name}
@@ -393,6 +396,11 @@ export default function AdminBookingsTable({
                     >
                       {b.status}
                     </span>
+                    {b.status === "confirmed" && isTooCloseToCancel(b.starts_at) && (
+                      <span className="ml-1 rounded-full bg-amber-400/15 px-2 py-1 text-[10px] font-bold normal-case tracking-normal text-amber-200">
+                        mepet
+                      </span>
+                    )}
                   </td>
                   <td className="py-2">
                     {b.status === "pending" && (
@@ -412,10 +420,7 @@ export default function AdminBookingsTable({
                         onClick={() => handleStatus(b.id, "started")}
                         className="rounded-xl bg-sky-500 p-3 py-2 text-xs font-bold text-ink transition hover:bg-sky-400 disabled:opacity-50"
                       >
-                        {currentTime !== null &&
-                        new Date(b.starts_at).getTime() <= currentTime
-                          ? "Mulai sekarang"
-                          : "Mulai"}
+                        Mulai sekarang
                       </button>
                     )}
                     {b.status === "started" && (

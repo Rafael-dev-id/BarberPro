@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { createWalkInBooking } from "@/lib/admin-actions";
 import { getBookedSlots } from "@/lib/booking-actions";
-import { filterPastSlots, generateSlots, minutesToTime, timeToMinutes } from "@/lib/slots";
+import {
+  effectiveStart,
+  filterPastSlots,
+  generateSlots,
+  getJakartaNow,
+  minutesToTime,
+  timeToMinutes,
+} from "@/lib/slots";
 import { type Barber, type Service, type WorkingHour } from "@/lib/types";
 
 interface WalkInFormProps {
@@ -16,9 +23,13 @@ interface WalkInFormProps {
 function isSlotTaken(
   slot: number,
   duration: number,
-  ranges: { startMinutes: number; endMinutes: number }[]
+  ranges: { startMinutes: number; endMinutes: number }[],
+  date: string
 ) {
-  const slotEnd = slot + duration;
+  const now = getJakartaNow();
+  const slotEnd =
+    effectiveStart(slot, now.minutes, date === now.date) + duration;
+  // Match the stored range: starts_at is the slot; ends_at is the real-time end.
   return ranges.some(
     (range) => slot < range.endMinutes && slotEnd > range.startMinutes
   );
@@ -79,7 +90,7 @@ export default function WalkInForm({
             )
           )
           .filter((slot) =>
-            !isSlotTaken(slot, activeService.duration, ranges)
+            !isSlotTaken(slot, activeService.duration, ranges, date)
           );
 
         setAvailableSlots(slots);

@@ -2,8 +2,15 @@
 
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
-import { minutesToTime } from "@/lib/slots";
+import {
+   effectiveStart,
+   getJakartaNow,
+   MAX_BOOKING_DAYS,
+   minutesToTime,
+   timeToMinutes,
+} from "@/lib/slots";
 import { formatTanggalPanjang } from "@/lib/format";
+import { normalizePhone } from "@/lib/phone";
 import { STORE } from "@/lib/data";
 import {
    sendWhatsAppToAdmin,
@@ -14,7 +21,7 @@ import {
 
 const bookingSchema = z.object({
    serviceId: z.number(),
-   barberId: z.number(),
+   barberId: z.number().int().min(0),
    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
    slotMinutes: z.number().int().min(0).max(23 * 60 + 59),
    customerName: z.string().trim().min(3),
@@ -46,32 +53,192 @@ export async function createBooking(input: BookingInput) {
 
    const data = parsed.data;
 
-    // Pagar server: tanggal wajib di rentang hari ini s.d. +60 hari (zona Jakarta).
-   const todayStr = new Date().toLocaleDateString("en-CA", { 
-      timeZone: "Asia/Jakarta" 
-   });
-
-   const maxDateObj = new Date();
-   maxDateObj.setDate(maxDateObj.getDate() + 60);
-   const maxStr = maxDateObj.toLocaleDateString("en-CA", {
-      timeZone: "Asia/Jakarta",
-   });
+   const { date: todayStr, minutes: nowMinutes } = getJakartaNow();
+   const maxDateObj = new Date(`${todayStr}T00:00:00Z`);
+   maxDateObj.setUTCDate(maxDateObj.getUTCDate() + MAX_BOOKING_DAYS);
+   const maxStr = maxDateObj.toISOString().slice(0, 10);
 
    if (data.date < todayStr || data.date > maxStr) {
       return {
          ok: false as const,
-         message: "Tanggal di luar rentang pemesanan (hari ini sampai 60 hari ke depan).",
+         message: "Tanggal di luar rentang pemesanan (hari ini sampai 14 hari ke depan).",
       };
    }
-   
 
-   const [serviceResult, barberResult] = await Promise.all([
-      supabase.from("services").select("name, duration").eq("id", data.serviceId).single(),
-      supabase.from("barbers").select("name").eq("id", data.barberId).single(),
-   ]);
+   const normalizedPhone = normalizePhone(data.customerPhone);
+   const dayEndDate = new Date(`${data.date}T00:00:00Z`);
+   dayEndDate.setUTCDate(dayEndDate.getUTCDate() + 1);
+   const dayEndIso = `${dayEndDate.toISOString().slice(0, 10)}T00:00:00+07:00`;
+   const { count: sameDayBookingCount, error: sameDayBookingError } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_phone", normalizedPhone)
+      .in("status", ["pending", "confirmed", "started"])
+      .gte("starts_at", `${data.date}T00:00:00+07:00`)
+      .lt("starts_at", dayEndIso);
 
-   const service = serviceResult.data;
-   const barber = barberResult.data;
+   if (sameDayBookingError) {
+      return {
+         ok: false as const,
+         message: "Gagal memeriksa booking pada tanggal ini. Silakan coba lagi.",
+      };
+   }
+   if ((sameDayBookingCount ?? 0) > 0) {
+      return {
+         ok: false as const,
+         message: "Nomor ini sudah memiliki booking aktif pada tanggal tersebut. Silakan pilih tanggal lain.",
+      };
+   }
+
+   const { count: activeBookingCount, error: activeBookingError } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_phone", normalizedPhone)
+      .in("status", ["pending", "confirmed", "started"])
+      .gt("ends_at", new Date().toISOString());
+
+   if (activeBookingError) {
+      return {
+         ok: false as const,
+         message: "Gagal memeriksa booking aktif nomor ini. Silakan coba lagi.",
+      };
+   }
+   if ((activeBookingCount ?? 0) >= 3) {
+      return {
+         ok: false as const,
+         message: "Nomor ini sudah memiliki 3 booking aktif. Silakan batalkan salah satu atau hubungi toko.",
+      };
+   }
+
+   const { data: service, error: serviceError } = await supabase
+      .from("services")
+      .select("name, duration")
+      .eq("id", data.serviceId)
+      .single();
+
+   if (serviceError || !service) {
+      return { ok: false as const, message: "Layanan tidak ditemukan." };
+   }
+   const effectiveSlotStart = effectiveStart(
+      data.slotMinutes,
+      nowMinutes,
+      data.date === todayStr
+   );
+   const effectiveSlotEnd = effectiveSlotStart + service.duration;
+
+   let barber: { id: number; name: string } | null = null;
+   if (data.barberId === 0) {
+      const [year, month, day] = data.date.split("-").map(Number);
+      const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+      const { data: activeBarbers, error: barbersError } = await supabase
+         .from("barbers")
+         .select("id, name")
+         .eq("is_active", true);
+
+      if (barbersError) {
+         return {
+            ok: false as const,
+            message: "Gagal mencari kapster yang tersedia. Silakan coba lagi.",
+         };
+      }
+
+      if (!activeBarbers?.length) {
+         return {
+            ok: false as const,
+            message: "Tidak ada kapster tersedia di jam itu. Silakan pilih jam lain.",
+         };
+      }
+
+      const activeBarberIds = activeBarbers.map((item) => item.id);
+      const { data: workingHours, error: workingHoursError } = await supabase
+         .from("working_hours")
+         .select("barber_id, start_time, end_time")
+         .in("barber_id", activeBarberIds)
+         .eq("weekday", weekday);
+
+      if (workingHoursError) {
+         return {
+            ok: false as const,
+            message: "Gagal memeriksa jam kerja kapster. Silakan coba lagi.",
+         };
+      }
+
+      const dayEndDate = new Date(`${data.date}T00:00:00Z`);
+      dayEndDate.setUTCDate(dayEndDate.getUTCDate() + 1);
+      const dayEndIso = `${dayEndDate.toISOString().slice(0, 10)}T00:00:00+07:00`;
+
+      const availableBarbers = await Promise.all(
+         activeBarbers.map(async (candidate) => {
+            const candidateHours = (workingHours ?? []).filter(
+               (hours) =>
+                  hours.barber_id === candidate.id &&
+                  data.slotMinutes >= timeToMinutes(hours.start_time) &&
+                  effectiveSlotEnd <= timeToMinutes(hours.end_time)
+            );
+            if (candidateHours.length === 0) return null;
+
+            const bookedRanges: {
+               startMinutes: number;
+               endMinutes: number;
+            }[] = await getBookedSlots(candidate.id, data.date);
+            // Match the stored range: starts_at is the slot; ends_at is the real-time end.
+            if (
+               bookedRanges.some(
+                  (range) =>
+                     data.slotMinutes < range.endMinutes &&
+                     effectiveSlotEnd > range.startMinutes
+               )
+            ) {
+               return null;
+            }
+
+            const { count, error } = await supabase
+               .from("bookings")
+               .select("id", { count: "exact", head: true })
+               .eq("barber_id", candidate.id)
+               .neq("status", "cancelled")
+               .gte("starts_at", `${data.date}T00:00:00+07:00`)
+               .lt("starts_at", dayEndIso);
+
+            if (error) return { candidate, count: null };
+            return { candidate, count: count ?? 0 };
+         })
+      );
+
+      if (availableBarbers.some((result) => result?.count === null)) {
+         return {
+            ok: false as const,
+            message: "Gagal menghitung jadwal kapster. Silakan coba lagi.",
+         };
+      }
+
+      const candidates = availableBarbers.filter(
+         (result): result is { candidate: (typeof activeBarbers)[number]; count: number } =>
+            result !== null
+      );
+      candidates.sort(
+         (left, right) =>
+            left.count - right.count || left.candidate.id - right.candidate.id
+      );
+      barber = candidates[0]?.candidate ?? null;
+      if (!barber) {
+         return {
+            ok: false as const,
+            message: "Tidak ada kapster tersedia di jam itu. Silakan pilih jam lain.",
+         };
+      }
+   } else {
+      const { data: selectedBarber, error: barberError } = await supabase
+         .from("barbers")
+         .select("id, name")
+         .eq("id", data.barberId)
+         .single();
+
+      if (barberError || !selectedBarber) {
+         return { ok: false as const, message: "Kapster tidak ditemukan." };
+      }
+      barber = selectedBarber;
+   }
 
    if (!service || !barber) {
       return { ok: false as  const, message: "Layanan atau barber tidak ditemukan." };
@@ -79,12 +246,12 @@ export async function createBooking(input: BookingInput) {
 
    const { error } = await supabase.from("bookings").insert({
       service_id: data.serviceId,
-      barber_id: data.barberId,
+      barber_id: barber.id,
       customer_name: data.customerName,
-      customer_phone: data.customerPhone,
+      customer_phone: normalizedPhone,
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
       starts_at: toIso(data.date, data.slotMinutes),
-      ends_at: toIso(data.date, data.slotMinutes + service.duration),
+      ends_at: toIso(data.date, effectiveSlotEnd),
       status: "confirmed",
    });
 

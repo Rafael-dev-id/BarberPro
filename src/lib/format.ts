@@ -12,10 +12,12 @@ export function formatTanggalPanjang(dateStr: string): string {
       weekday: "long",
    }).format(date);
    const day = String(date.getDate()).padStart(2, "0");
-   const month = String(date.getMonth() + 1).padStart(2, "0");
+   const month = new Intl.DateTimeFormat("id-ID", {
+      month: "short",
+   }).format(date).toLowerCase();
    const year = date.getFullYear();
 
-   return `${weekday}, ${day}/${month}/${year}`;
+   return `${weekday}, ${day} ${month} ${year}`;
 }
 
 export function formatTanggalLabel(dateStr: string): string {
@@ -32,7 +34,7 @@ export function formatTanggalLabel(dateStr: string): string {
       month: "short",
    })
       .format(date)
-      .toLocaleLowerCase("id-ID");
+      .toLowerCase();
    const label = `${weekday}, ${day} ${month}`;
    const prefix =
       dateStr === today ? "Hari ini · " : dateStr === tomorrow ? "Besok · " : "";
