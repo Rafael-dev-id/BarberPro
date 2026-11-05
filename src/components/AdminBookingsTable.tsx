@@ -8,6 +8,7 @@ import { isTooCloseToCancel } from "@/lib/slots";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
+import CashierPanel from "@/components/CashierPanel";
 import WalkInForm from "@/components/WalkInForm";
 
 const statusColors: Record<string, string> = {
@@ -213,6 +214,12 @@ export default function AdminBookingsTable({
   return (
     <>
       <AdminStats bookings={bookings} />
+      <CashierPanel
+        bookings={bookings}
+        barbers={barbers}
+        busyId={busyId}
+        onFinish={(id) => handleStatus(id, "done")}
+      />
 
       <div className="flex justify-between items-center pt-8 pb-3">
          <div className="flex flex-wrap items-center gap-3">

@@ -33,6 +33,8 @@ export type BookingRow = {
   customer_name: string;
   customer_phone: string;
   starts_at: string;
+  ends_at: string;
+  customer_notes?: string | null;
   status: string;
   services: { name: string; price: number } | null;
   barbers: { name: string } | null;
