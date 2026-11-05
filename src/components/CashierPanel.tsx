@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { getJakartaNow } from "@/lib/slots";
 import { formatRupiah } from "@/lib/format";
 import { type Barber, type BookingRow } from "@/lib/types";
@@ -28,10 +29,19 @@ export default function CashierPanel({
   onFinish,
 }: CashierPanelProps) {
   const today = getJakartaNow().date;
-  const nowMs = Date.now();
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const todayBookings = bookings.filter(
     (booking) => jakartaDateFormatter.format(new Date(booking.starts_at)) === today
   );
+
+  useEffect(() => {
+    const clockTimer = setTimeout(() => setNowMs(Date.now()), 0);
+    const interval = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => {
+      clearTimeout(clockTimer);
+      clearInterval(interval);
+    };
+  }, []);
   const doneToday = todayBookings.filter((booking) => booking.status === "done");
   const activeBarberNames = barbers
     .filter((barber) => barber.is_active)
@@ -56,6 +66,7 @@ export default function CashierPanel({
               (booking) =>
                 booking.status === "confirmed" &&
                 booking.barbers?.name === barber.name &&
+                nowMs !== null &&
                 new Date(booking.starts_at).getTime() >= nowMs
             )
             .sort(
