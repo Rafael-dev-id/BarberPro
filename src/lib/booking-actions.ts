@@ -219,7 +219,7 @@ export async function createBooking(input: BookingInput) {
       service_id: data.serviceId,
       barber_id: barber.id,
       customer_name: data.customerName,
-      customer_phone: data.customerPhone,
+      customer_phone: normalizedPhone,
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
       starts_at: toIso(data.date, data.slotMinutes),
       ends_at: toIso(data.date, data.slotMinutes + service.duration),
