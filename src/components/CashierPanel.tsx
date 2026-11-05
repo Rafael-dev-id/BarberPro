@@ -32,6 +32,14 @@ export default function CashierPanel({
   const todayBookings = bookings.filter(
     (booking) => jakartaDateFormatter.format(new Date(booking.starts_at)) === today
   );
+  const doneToday = todayBookings.filter((booking) => booking.status === "done");
+  const activeBarberNames = barbers
+    .filter((barber) => barber.is_active)
+    .map((barber) => barber.name);
+  const otherBarberNames = Array.from(
+    new Set(doneToday.map((booking) => booking.barbers?.name ?? "Tanpa kapster"))
+  ).filter((name) => !activeBarberNames.includes(name));
+  const revenueRows = Array.from(new Set([...activeBarberNames, ...otherBarberNames]));
 
   return (
     <section className="mt-6">
@@ -107,6 +115,59 @@ export default function CashierPanel({
             </article>
           );
         })}
+      </div>
+      <div className="mt-6">
+        <h3 className="font-display text-lg font-semibold">
+          Selesai hari ini per kapster
+        </h3>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-cream/10">
+          <table className="w-full min-w-[28rem] text-left text-sm">
+            <thead className="bg-ink/70 text-cream/60">
+              <tr>
+                <th className="px-4 py-2 font-medium">Kapster</th>
+                <th className="px-4 py-2 text-right font-medium">Sesi</th>
+                <th className="px-4 py-2 text-right font-medium">Rupiah</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revenueRows.map((name) => {
+                const barberDone = doneToday.filter(
+                  (booking) => (booking.barbers?.name ?? "Tanpa kapster") === name
+                );
+                const revenue = barberDone.reduce(
+                  (total, booking) => total + (booking.services?.price ?? 0),
+                  0
+                );
+                return (
+                  <tr key={name} className="border-t border-cream/10">
+                    <td className="px-4 py-2 text-cream">{name}</td>
+                    <td className="px-4 py-2 text-right text-cream/70">
+                      {barberDone.length}
+                    </td>
+                    <td className="px-4 py-2 text-right text-cream/70">
+                      {formatRupiah(revenue)}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t border-gold/40 bg-ink/70 font-bold">
+                <td className="px-4 py-2 text-gold-300">Total</td>
+                <td className="px-4 py-2 text-right text-cream">
+                  {doneToday.length}
+                </td>
+                <td className="px-4 py-2 text-right text-cream">
+                  {formatRupiah(
+                    doneToday.reduce(
+                      (total, booking) =>
+                        total + (booking.services?.price ?? 0),
+                      0
+                    )
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );
