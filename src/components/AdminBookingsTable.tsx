@@ -423,10 +423,7 @@ export default function AdminBookingsTable({
                         onClick={() => handleStatus(b.id, "started")}
                         className="rounded-xl bg-sky-500 p-3 py-2 text-xs font-bold text-ink transition hover:bg-sky-400 disabled:opacity-50"
                       >
-                        {currentTime !== null &&
-                        new Date(b.starts_at).getTime() <= currentTime
-                          ? "Mulai sekarang"
-                          : "Mulai"}
+                        Mulai sekarang
                       </button>
                     )}
                     {b.status === "started" && (
