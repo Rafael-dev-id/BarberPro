@@ -724,10 +724,26 @@ export default function BookingClient({
                   )
                 ) && (
                 <div className="mt-4 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
-                  <p>
-                    Kapster lain kosong: {sameDayOffer.barberName}, jam{" "}
-                    {minutesToTime(sameDayOffer.timeMinutes)} WIB.
+                  <p className="font-semibold">
+                    Slot untuk {selectedBarber.name} sudah habis.
                   </p>
+                  <p className="mt-1">{formatTanggalLabel(selectedDate)}</p>
+                  <p className="mt-2">
+                    {sameDayOffer.barberName} masih punya slot.
+                  </p>
+                  <p>
+                    Slot terdekat: {minutesToTime(sameDayOffer.timeMinutes)} WIB.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chooseBarber(sameDayOffer.barberId);
+                      setSameDayOffer(null);
+                    }}
+                    className="mt-2 rounded-full border border-gold px-3 py-1.5 font-semibold text-ink hover:bg-gold/10"
+                  >
+                    Ganti ke {sameDayOffer.barberName} · {minutesToTime(sameDayOffer.timeMinutes)} WIB
+                  </button>
                 </div>
               )}
 
