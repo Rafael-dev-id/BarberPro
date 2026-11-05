@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { STORE } from "@/lib/data";
 import MarketingNav from "@/components/MarketingNav";
 
