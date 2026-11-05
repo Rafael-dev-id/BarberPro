@@ -193,6 +193,14 @@ export default function BookingForm({
             onChange={(e) => {
               setCustomerPhone(e.target.value);
               clearError("phone");
+              if (
+                status === "error" &&
+                serverMessage !==
+                  "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain."
+              ) {
+                setStatus("idle");
+                setServerMessage("");
+              }
             }}
             placeholder="08xxxxxxxxxx"
             className="input-premium"
