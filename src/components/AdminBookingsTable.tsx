@@ -8,7 +8,7 @@ import { isTooCloseToCancel } from "@/lib/slots";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
-import CashierPanel from "@/components/CashierPanel";
+import CashierPanel, { CashierRevenueTable } from "@/components/CashierPanel";
 import WalkInForm from "@/components/WalkInForm";
 
 const statusColors: Record<string, string> = {
@@ -478,6 +478,7 @@ export default function AdminBookingsTable({
            </button>
         </div>
       </div>
+      <CashierRevenueTable bookings={bookings} barbers={barbers} />
     </>
   );
 }
