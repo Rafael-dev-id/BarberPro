@@ -112,7 +112,7 @@ export async function createBooking(input: BookingInput) {
 
    const { data: service, error: serviceError } = await supabase
       .from("services")
-      .select("name, duration")
+      .select("name, duration, price")
       .eq("id", data.serviceId)
       .single();
 
@@ -237,6 +237,32 @@ export async function createBooking(input: BookingInput) {
       if (barberError || !selectedBarber) {
          return { ok: false as const, message: "Kapster tidak ditemukan." };
       }
+      const [year, month, day] = data.date.split("-").map(Number);
+      const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+      const { data: workingHours, error: workingHoursError } = await supabase
+         .from("working_hours")
+         .select("start_time, end_time")
+         .eq("barber_id", selectedBarber.id)
+         .eq("weekday", weekday);
+
+      if (workingHoursError) {
+         return {
+            ok: false as const,
+            message: "Gagal memeriksa jam kerja kapster. Silakan coba lagi.",
+         };
+      }
+      if (
+         !workingHours.some(
+            (hours) =>
+               data.slotMinutes >= timeToMinutes(hours.start_time) &&
+               effectiveSlotEnd <= timeToMinutes(hours.end_time)
+         )
+      ) {
+         return {
+            ok: false as const,
+            message: "Jam tersebut di luar jam kerja kapster. Silakan pilih jam lain.",
+         };
+      }
       barber = selectedBarber;
    }
 
@@ -318,7 +344,17 @@ export async function createBooking(input: BookingInput) {
          : "WA konfirmasi ke nomormu gagal terkirim — bookingmu tetap tercatat.",
    ].join("\n");
    
-   return { ok: true as const, message };
+   return {
+      ok: true as const,
+      message,
+      summary: {
+         serviceName: service.name,
+         barberName: barber.name,
+         dateLabel: formatTanggalPanjang(data.date),
+         timeLabel: minutesToTime(data.slotMinutes),
+         price: service.price,
+      },
+   };
 }
 
 export async function getBookedSlots(barberId: number, date: string) {
