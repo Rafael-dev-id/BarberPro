@@ -71,7 +71,7 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
              icon={<Hourglass size={18} />}
            />
            <StatCard
-             label="Barber Tersibuk"
+             label="Kapster Tersibuk"
              value={busiest}
              sub={`${busiestCount} booking`}
              icon={<Crown size={18} />}

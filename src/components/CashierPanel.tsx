@@ -24,6 +24,10 @@ const jakartaTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
+function formatJakartaTime(value: string): string {
+  return jakartaTimeFormatter.format(new Date(value));
+}
+
 export default function CashierPanel({
   bookings,
   barbers,
@@ -75,29 +79,38 @@ export default function CashierPanel({
           return (
             <article
               key={barber.id}
-              className="rounded-2xl border border-cream/10 bg-ink/60 p-4"
+              className={`rounded-2xl border p-4 ${
+                startedBookings.length > 0
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-line bg-white"
+              }`}
             >
-              <h3 className="font-semibold text-gold-300">{barber.name}</h3>
+              <h3 className="flex items-center gap-2 font-semibold text-ink">
+                {startedBookings.length > 0 && (
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" aria-hidden="true" />
+                )}
+                {barber.name}
+              </h3>
               {startedBookings.length > 0 ? (
                 <div className="mt-3 space-y-3">
                   {startedBookings.map((booking) => (
                     <div
                       key={booking.id}
-                      className="rounded-xl border border-cream/10 bg-ink p-3"
+                      className="rounded-xl border border-emerald-200 bg-white p-3"
                     >
-                      <p className="font-medium text-cream">{booking.customer_name}</p>
-                      <p className="mt-1 text-sm text-cream/70">
+                      <p className="font-medium text-ink">{booking.customer_name}</p>
+                      <p className="mt-1 text-sm text-ink/70">
                         {booking.services?.name ?? "Layanan"} ·{" "}
                         {booking.customer_phone.startsWith("walkin-")
                           ? "Tanpa nomor"
                           : booking.customer_phone}
                       </p>
-                      <p className="mt-1 text-xs text-cream/60">
-                        {jakartaTimeFormatter.format(new Date(booking.starts_at))}-
-                        {jakartaTimeFormatter.format(new Date(booking.ends_at))}
+                      <p className="mt-1 text-sm text-ink/70">
+                        Mulai {formatJakartaTime(booking.starts_at)} · estimasi selesai{" "}
+                        {formatJakartaTime(booking.ends_at)}
                       </p>
                       {booking.customer_notes && (
-                        <p className="mt-2 text-sm text-cream/70">
+                        <p className="mt-2 text-sm text-ink/70">
                           Catatan: {booking.customer_notes}
                         </p>
                       )}
@@ -105,7 +118,7 @@ export default function CashierPanel({
                         type="button"
                         disabled={busyId === booking.id}
                         onClick={() => onFinish(booking.id)}
-                        className="mt-3 w-full rounded-xl bg-gold px-3 py-2 text-sm font-bold text-ink transition hover:bg-gold-soft disabled:opacity-50"
+                        className="mt-3 min-h-11 w-full rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
                       >
                         Selesai · {formatRupiah(booking.services?.price ?? 0)}
                       </button>
@@ -113,13 +126,13 @@ export default function CashierPanel({
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-cream/50">Kosong</p>
+                <p className="mt-3 text-sm text-ink/70">Kosong</p>
               )}
-              <p className="mt-3 border-t border-cream/10 pt-3 text-sm text-cream/70">
+              <p className="mt-3 border-t border-line pt-3 text-sm text-ink/70">
                 {nextBooking && nowMs !== null
                   ? new Date(nextBooking.starts_at).getTime() >= nowMs
-                    ? `Berikutnya: ${nextBooking.customer_name} · ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))}`
-                    : `Menunggu: ${nextBooking.customer_name} · jadwal ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))} (telat ${Math.floor((nowMs - new Date(nextBooking.starts_at).getTime()) / 60_000)} mnt)`
+                    ? `Berikutnya: ${nextBooking.customer_name} · ${formatJakartaTime(nextBooking.starts_at)}`
+                    : `Menunggu: ${nextBooking.customer_name} · jadwal ${formatJakartaTime(nextBooking.starts_at)} (telat ${Math.floor((nowMs - new Date(nextBooking.starts_at).getTime()) / 60_000)} mnt)`
                   : "Tidak ada antrean"}
               </p>
             </article>
@@ -152,9 +165,9 @@ export function CashierRevenueTable({
       <h2 className="font-display text-lg font-semibold">
         Selesai hari ini per kapster
       </h2>
-      <div className="mt-3 overflow-x-auto rounded-2xl border border-cream/10">
+      <div className="mt-3 overflow-x-auto rounded-2xl border border-line">
         <table className="w-full min-w-[28rem] text-left text-sm">
-          <thead className="bg-ink/70 text-cream/60">
+          <thead className="bg-cream text-ink/70">
             <tr>
               <th className="px-4 py-2 font-medium">Kapster</th>
               <th className="px-4 py-2 text-right font-medium">Sesi</th>
@@ -171,21 +184,21 @@ export function CashierRevenueTable({
                 0
               );
               return (
-                <tr key={name} className="border-t border-cream/10">
-                  <td className="px-4 py-2 text-cream">{name}</td>
-                  <td className="px-4 py-2 text-right text-cream/70">
+                <tr key={name} className="border-t border-line">
+                  <td className="px-4 py-2 text-ink">{name}</td>
+                  <td className="px-4 py-2 text-right text-ink/70">
                     {barberDone.length}
                   </td>
-                  <td className="px-4 py-2 text-right text-cream/70">
+                  <td className="px-4 py-2 text-right text-ink/70">
                     {formatRupiah(revenue)}
                   </td>
                 </tr>
               );
             })}
-            <tr className="border-t border-gold/40 bg-ink/70 font-bold">
-              <td className="px-4 py-2 text-gold-300">Total</td>
-              <td className="px-4 py-2 text-right text-cream">{doneToday.length}</td>
-              <td className="px-4 py-2 text-right text-cream">
+            <tr className="border-t border-line bg-cream font-bold">
+              <td className="px-4 py-2 text-ink">Total</td>
+              <td className="px-4 py-2 text-right text-ink">{doneToday.length}</td>
+              <td className="px-4 py-2 text-right text-ink">
                 {formatRupiah(
                   doneToday.reduce(
                     (total, booking) => total + (booking.services?.price ?? 0),
