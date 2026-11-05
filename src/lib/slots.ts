@@ -3,6 +3,18 @@ export const LATE_GRACE_MINUTES = 10;
 export const CANCEL_WINDOW_MINUTES = 30;
 export const SLOT_INTERVAL_MINUTES = 15;
 
+const JAKARTA_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+   timeZone: "Asia/Jakarta",
+});
+const JAKARTA_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+   timeZone: "Asia/Jakarta",
+   hour: "2-digit",
+   minute: "2-digit",
+   hourCycle: "h23",
+});
+let cachedJakartaSecond = -1;
+let cachedJakartaNow: { date: string; minutes: number } | null = null;
+
 export function timeToMinutes(time: string): number {
    const [hours, minutes] = time.split(":").map(Number);
    return hours * 60 + minutes;
@@ -17,19 +29,22 @@ export function minutesToTime(minutes: number): string {
 }
 
 export function getJakartaNow(): { date: string; minutes: number } {
-   const now = new Date();
-   const date = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
-   const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Jakarta",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-   }).formatToParts(now);
+   const nowMs = Date.now();
+   const currentSecond = Math.floor(nowMs / 1000);
+   if (cachedJakartaSecond === currentSecond && cachedJakartaNow) {
+      return cachedJakartaNow;
+   }
+
+   const now = new Date(nowMs);
+   const date = JAKARTA_DATE_FORMATTER.format(now);
+   const parts = JAKARTA_TIME_FORMATTER.formatToParts(now);
    const minutes =
       Number(parts.find((part) => part.type === "hour")?.value ?? 0) * 60 +
       Number(parts.find((part) => part.type === "minute")?.value ?? 0);
 
-   return { date, minutes };
+   cachedJakartaSecond = currentSecond;
+   cachedJakartaNow = { date, minutes };
+   return cachedJakartaNow;
 }
 
 export function effectiveStart(
