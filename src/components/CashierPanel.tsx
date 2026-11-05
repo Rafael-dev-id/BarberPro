@@ -28,6 +28,7 @@ export default function CashierPanel({
   onFinish,
 }: CashierPanelProps) {
   const today = getJakartaNow().date;
+  const nowMs = Date.now();
   const todayBookings = bookings.filter(
     (booking) => jakartaDateFormatter.format(new Date(booking.starts_at)) === today
   );
@@ -42,6 +43,18 @@ export default function CashierPanel({
               booking.status === "started" &&
               booking.barbers?.name === barber.name
           );
+          const nextBooking = todayBookings
+            .filter(
+              (booking) =>
+                booking.status === "confirmed" &&
+                booking.barbers?.name === barber.name &&
+                new Date(booking.starts_at).getTime() >= nowMs
+            )
+            .sort(
+              (left, right) =>
+                new Date(left.starts_at).getTime() -
+                new Date(right.starts_at).getTime()
+            )[0];
 
           return (
             <article
@@ -86,6 +99,11 @@ export default function CashierPanel({
               ) : (
                 <p className="mt-3 text-sm text-cream/50">Kosong</p>
               )}
+              <p className="mt-3 border-t border-cream/10 pt-3 text-sm text-cream/70">
+                {nextBooking
+                  ? `Berikutnya: ${nextBooking.customer_name} · ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))}`
+                  : "Tidak ada antrean"}
+              </p>
             </article>
           );
         })}
