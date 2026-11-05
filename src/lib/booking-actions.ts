@@ -181,10 +181,11 @@ export async function createBooking(input: BookingInput) {
                startMinutes: number;
                endMinutes: number;
             }[] = await getBookedSlots(candidate.id, data.date);
+            // Match the stored range: starts_at is the slot; ends_at is the real-time end.
             if (
                bookedRanges.some(
                   (range) =>
-                     effectiveSlotStart < range.endMinutes &&
+                     data.slotMinutes < range.endMinutes &&
                      effectiveSlotEnd > range.startMinutes
                )
             ) {

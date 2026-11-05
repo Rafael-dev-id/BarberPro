@@ -218,10 +218,11 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    } catch {
       return { ok: false as const, message: "Gagal memeriksa ketersediaan jam." };
    }
+   // Match the stored range: starts_at is the slot; ends_at is the real-time end.
    if (
       bookedRanges.some(
          (range) =>
-            effectiveSlotStart < range.endMinutes &&
+            data.slotMinutes < range.endMinutes &&
             slotEnd > range.startMinutes
       )
    ) {
