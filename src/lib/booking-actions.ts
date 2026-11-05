@@ -112,7 +112,7 @@ export async function createBooking(input: BookingInput) {
 
    const { data: service, error: serviceError } = await supabase
       .from("services")
-      .select("name, duration")
+      .select("name, duration, price")
       .eq("id", data.serviceId)
       .single();
 
@@ -344,7 +344,17 @@ export async function createBooking(input: BookingInput) {
          : "WA konfirmasi ke nomormu gagal terkirim — bookingmu tetap tercatat.",
    ].join("\n");
    
-   return { ok: true as const, message };
+   return {
+      ok: true as const,
+      message,
+      summary: {
+         serviceName: service.name,
+         barberName: barber.name,
+         dateLabel: formatTanggalPanjang(data.date),
+         timeLabel: minutesToTime(data.slotMinutes),
+         price: service.price,
+      },
+   };
 }
 
 export async function getBookedSlots(barberId: number, date: string) {

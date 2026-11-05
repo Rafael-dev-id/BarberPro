@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
+import { formatRupiah } from "@/lib/format";
 import { minutesToTime } from "@/lib/slots";
 import { createBooking } from "@/lib/booking-actions";
 import Link from "next/link";
@@ -25,6 +26,13 @@ interface FormErrors {
 }
 
 type SubmitStatus = "idle" | "loading" | "success" | "error";
+type BookingSummary = {
+  serviceName: string;
+  barberName: string;
+  dateLabel: string;
+  timeLabel: string;
+  price: number;
+};
 
 export default function BookingForm({
   complete,
@@ -44,6 +52,7 @@ export default function BookingForm({
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [serverMessage, setServerMessage] = useState("");
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
 
   function clearError(field: keyof FormErrors) {
     setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -80,6 +89,7 @@ export default function BookingForm({
 
     setStatus(result.ok ? "success" : "error");
     setServerMessage(result.message);
+    setBookingSummary(result.ok ? result.summary : null);
 
     if (result.ok) onBooked();
     else if (result.message === "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain.") {
@@ -94,6 +104,7 @@ export default function BookingForm({
      setErrors({});
      setStatus("idle");
      setServerMessage("");
+     setBookingSummary(null);
   }
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.
@@ -135,6 +146,30 @@ export default function BookingForm({
            <h2 className="font-display text-lg font-semibold">
               Booking Berhasil
            </h2>
+           {bookingSummary && (
+             <dl className="mt-3 space-y-1 rounded-xl bg-ink/5 p-4 text-sm">
+               <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Layanan</dt>
+                 <dd className="text-right font-medium">{bookingSummary.serviceName}</dd>
+               </div>
+               <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Kapster</dt>
+                 <dd className="text-right font-medium">{bookingSummary.barberName}</dd>
+               </div>
+               <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Tanggal</dt>
+                 <dd className="text-right font-medium">{bookingSummary.dateLabel}</dd>
+               </div>
+               <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Jam</dt>
+                 <dd className="text-right font-medium">{bookingSummary.timeLabel} WIB</dd>
+               </div>
+               <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Harga</dt>
+                 <dd className="text-right font-medium">{formatRupiah(bookingSummary.price)}</dd>
+               </div>
+             </dl>
+           )}
            <div className="mt-3 rounded-xl bg-emerald-50 p-5 text-sm text-emerald-700 whitespace-pre-line lh-3 text-base/7 tracking-wide">
               {serverMessage}
            </div>
