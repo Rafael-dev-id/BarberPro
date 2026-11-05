@@ -48,7 +48,7 @@ function isSlotTaken(
 
 function listSmartCandidateDates(workingHours: WorkingHour[]): string[] {
   const now = new Date();
-  const today = now.toLocaleDateString("en-CA");
+  const today = getJakartaNow().date;
   const candidates: string[] = [];
 
   for (let offset = 0; offset <= 7; offset++) {
