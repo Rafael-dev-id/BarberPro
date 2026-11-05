@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
@@ -42,6 +42,7 @@ export default function AdminBookingsTable({
   // G2: tipe eksplisit. Tanpa generic, TS yakin state ini selamanya null.
   const [customRange, setCustomRange] = useState<Value | null>(null);
   const [live, setLive] = useState<string>("MENYAMBUNG…");
+  const liveStatusRef = useRef("MENYAMBUNG…");
   const [page, setPage] = useState<number>(1);
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [walkInMessage, setWalkInMessage] = useState("");
@@ -68,6 +69,7 @@ export default function AdminBookingsTable({
        setLive("RELOAD GAGAL"); 
        return;
     }
+    setLive(liveStatusRef.current);
   }
 
 
@@ -98,7 +100,10 @@ export default function AdminBookingsTable({
           reload();
         }
       )
-      .subscribe((status: string) => setLive(status));
+      .subscribe((status: string) => {
+        liveStatusRef.current = status;
+        setLive(status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
