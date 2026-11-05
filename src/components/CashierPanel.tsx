@@ -12,6 +12,8 @@ interface CashierPanelProps {
   onFinish: (bookingId: number) => void;
 }
 
+const LATE_QUEUE_MINUTES = 30;
+
 const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Jakarta",
 });
@@ -30,6 +32,9 @@ export default function CashierPanel({
 }: CashierPanelProps) {
   const today = getJakartaNow().date;
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const queueCutoff = nowMs === null
+    ? null
+    : nowMs - LATE_QUEUE_MINUTES * 60_000;
   const todayBookings = bookings.filter(
     (booking) => jakartaDateFormatter.format(new Date(booking.starts_at)) === today
   );
@@ -58,8 +63,8 @@ export default function CashierPanel({
               (booking) =>
                 booking.status === "confirmed" &&
                 booking.barbers?.name === barber.name &&
-                nowMs !== null &&
-                new Date(booking.starts_at).getTime() >= nowMs
+                queueCutoff !== null &&
+                new Date(booking.starts_at).getTime() >= queueCutoff
             )
             .sort(
               (left, right) =>
@@ -111,8 +116,10 @@ export default function CashierPanel({
                 <p className="mt-3 text-sm text-cream/50">Kosong</p>
               )}
               <p className="mt-3 border-t border-cream/10 pt-3 text-sm text-cream/70">
-                {nextBooking
-                  ? `Berikutnya: ${nextBooking.customer_name} · ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))}`
+                {nextBooking && nowMs !== null
+                  ? new Date(nextBooking.starts_at).getTime() >= nowMs
+                    ? `Berikutnya: ${nextBooking.customer_name} · ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))}`
+                    : `Menunggu: ${nextBooking.customer_name} · jadwal ${jakartaTimeFormatter.format(new Date(nextBooking.starts_at))} (telat ${Math.floor((nowMs - new Date(nextBooking.starts_at).getTime()) / 60_000)} mnt)`
                   : "Tidak ada antrean"}
               </p>
             </article>
