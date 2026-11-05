@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import {
+   effectiveStart,
+   getJakartaNow,
    MAX_BOOKING_DAYS,
    minutesToTime,
    timeToMinutes,
@@ -51,9 +53,7 @@ export async function createBooking(input: BookingInput) {
 
    const data = parsed.data;
 
-   const todayStr = new Date().toLocaleDateString("en-CA", {
-      timeZone: "Asia/Jakarta",
-   });
+   const { date: todayStr, minutes: nowMinutes } = getJakartaNow();
    const maxDateObj = new Date(`${todayStr}T00:00:00Z`);
    maxDateObj.setUTCDate(maxDateObj.getUTCDate() + MAX_BOOKING_DAYS);
    const maxStr = maxDateObj.toISOString().slice(0, 10);
@@ -119,6 +119,12 @@ export async function createBooking(input: BookingInput) {
    if (serviceError || !service) {
       return { ok: false as const, message: "Layanan tidak ditemukan." };
    }
+   const effectiveSlotStart = effectiveStart(
+      data.slotMinutes,
+      nowMinutes,
+      data.date === todayStr
+   );
+   const effectiveSlotEnd = effectiveSlotStart + service.duration;
 
    let barber: { id: number; name: string } | null = null;
    if (data.barberId === 0) {
@@ -167,8 +173,7 @@ export async function createBooking(input: BookingInput) {
                (hours) =>
                   hours.barber_id === candidate.id &&
                   data.slotMinutes >= timeToMinutes(hours.start_time) &&
-                  data.slotMinutes + service.duration <=
-                     timeToMinutes(hours.end_time)
+                  effectiveSlotEnd <= timeToMinutes(hours.end_time)
             );
             if (candidateHours.length === 0) return null;
 
@@ -176,12 +181,11 @@ export async function createBooking(input: BookingInput) {
                startMinutes: number;
                endMinutes: number;
             }[] = await getBookedSlots(candidate.id, data.date);
-            const slotEnd = data.slotMinutes + service.duration;
             if (
                bookedRanges.some(
                   (range) =>
-                     data.slotMinutes < range.endMinutes &&
-                     slotEnd > range.startMinutes
+                     effectiveSlotStart < range.endMinutes &&
+                     effectiveSlotEnd > range.startMinutes
                )
             ) {
                return null;
@@ -246,7 +250,7 @@ export async function createBooking(input: BookingInput) {
       customer_phone: normalizedPhone,
       customer_notes: data.customerNotes === "" ? null : data.customerNotes,
       starts_at: toIso(data.date, data.slotMinutes),
-      ends_at: toIso(data.date, data.slotMinutes + service.duration),
+      ends_at: toIso(data.date, effectiveSlotEnd),
       status: "confirmed",
    });
 

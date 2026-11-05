@@ -11,7 +11,12 @@ import {
 import { getBookedSlots, minutesToIso } from "@/lib/booking-actions";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
-import { minutesToTime, timeToMinutes } from "@/lib/slots";
+import {
+   effectiveStart,
+   getJakartaNow,
+   minutesToTime,
+   timeToMinutes,
+} from "@/lib/slots";
 import { STORE } from "@/lib/data";
 
 const statusSchema = z.enum(["confirmed", "started", "done", "cancelled"]);
@@ -129,6 +134,7 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    }
 
    const data = parsed.data;
+   const { date: todayStr, minutes: nowMinutes } = getJakartaNow();
    const phoneInput = data.customerPhone?.trim() ?? "";
    if (phoneInput && !isValidIndonesianPhone(phoneInput)) {
       return { ok: false as const, message: "Nomor WA tidak valid." };
@@ -191,10 +197,16 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
 
    const service = serviceResult.data;
    const barber = barberResult.data;
+   const effectiveSlotStart = effectiveStart(
+      data.slotMinutes,
+      nowMinutes,
+      data.date === todayStr
+   );
+   const slotEnd = effectiveSlotStart + service.duration;
    const isWithinWorkingHours = workingHoursResult.data.some(
       (hours) =>
          data.slotMinutes >= timeToMinutes(hours.start_time) &&
-         data.slotMinutes + service.duration <= timeToMinutes(hours.end_time)
+         slotEnd <= timeToMinutes(hours.end_time)
    );
    if (!isWithinWorkingHours) {
       return { ok: false as const, message: "Jam tersebut di luar jam kerja kapster." };
@@ -206,11 +218,10 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    } catch {
       return { ok: false as const, message: "Gagal memeriksa ketersediaan jam." };
    }
-   const slotEnd = data.slotMinutes + service.duration;
    if (
       bookedRanges.some(
          (range) =>
-            data.slotMinutes < range.endMinutes &&
+            effectiveSlotStart < range.endMinutes &&
             slotEnd > range.startMinutes
       )
    ) {

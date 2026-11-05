@@ -16,6 +16,30 @@ export function minutesToTime(minutes: number): string {
    return `${hh}:${mm}`;
 }
 
+export function getJakartaNow(): { date: string; minutes: number } {
+   const now = new Date();
+   const date = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+   const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Jakarta",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+   }).formatToParts(now);
+   const minutes =
+      Number(parts.find((part) => part.type === "hour")?.value ?? 0) * 60 +
+      Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+
+   return { date, minutes };
+}
+
+export function effectiveStart(
+   slot: number,
+   nowMinutes: number,
+   isToday: boolean
+): number {
+   return isToday ? Math.max(slot, nowMinutes) : slot;
+}
+
 export function generateSlots(
    startMinutes: number,
    endMinutes: number,
@@ -36,12 +60,10 @@ export function generateSlots(
 }
 
 export function filterPastSlots(slots: number[], dateStr: string): number[] {
-   const now = new Date();
-   const today = now.toLocaleDateString("en-CA");
+   const { date: today, minutes: nowMinutes } = getJakartaNow();
 
    if (dateStr !== today) return slots;
 
-   const nowMinutes = now.getHours() * 60 + now.getMinutes();
    return slots.filter((slot) => slot > nowMinutes - LATE_GRACE_MINUTES);
 }
 

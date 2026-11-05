@@ -5,8 +5,10 @@ import { Barber, Service, WorkingHour } from "@/lib/types";
 import { formatRupiah, formatTanggalLabel } from "@/lib/format";
 import {
   MAX_BOOKING_DAYS,
+  effectiveStart,
   generateSlots,
   filterPastSlots,
+  getJakartaNow,
   timeToMinutes,
   minutesToTime,
 } from "@/lib/slots";
@@ -29,9 +31,18 @@ interface SmartDateNote {
   targetDate: string;
 }
 
-function isSlotTaken(slot: number, duration: number, ranges: BookedRange[]) {
-  const slotEnd = slot + duration;
-  return ranges.some((r) => slot < r.endMinutes && slotEnd > r.startMinutes);
+function isSlotTaken(
+  slot: number,
+  duration: number,
+  ranges: BookedRange[],
+  date: string
+) {
+  const now = getJakartaNow();
+  const slotStart = effectiveStart(slot, now.minutes, date === now.date);
+  const slotEnd = slotStart + duration;
+  return ranges.some(
+    (range) => slotStart < range.endMinutes && slotEnd > range.startMinutes
+  );
 }
 
 function listSmartCandidateDates(workingHours: WorkingHour[]): string[] {
@@ -62,19 +73,6 @@ function listSmartCandidateDates(workingHours: WorkingHour[]): string[] {
   }
 
   return candidates.length > 0 ? candidates : [today];
-}
-
-function getJakartaMinutes(): number {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  return (
-    Number(parts.find((part) => part.type === "hour")?.value ?? 0) * 60 +
-    Number(parts.find((part) => part.type === "minute")?.value ?? 0)
-  );
 }
 
 export default function BookingClient({
@@ -198,7 +196,8 @@ export default function BookingClient({
                     )
                   )
                   .filter(
-                    (slot) => !isSlotTaken(slot, serviceDuration, ranges)
+                    (slot) =>
+                      !isSlotTaken(slot, serviceDuration, ranges, dateForSlots)
                   );
               })
           );
@@ -303,14 +302,14 @@ export default function BookingClient({
 
       const minDuration = Math.min(...initialServices.map((service) => service.duration));
       const candidates = listSmartCandidateDates(initialWorkingHours);
-      const todayDate = new Date().toLocaleDateString("en-CA");
+      const todayDate = getJakartaNow().date;
 
       for (const candidate of candidates) {
         if (cancelled || dateTouchedRef.current || selectedBarberRef.current !== null) {
           return;
         }
 
-        const todayMinutes = getJakartaMinutes();
+        const todayMinutes = getJakartaNow().minutes;
         const weekday = new Date(`${candidate}T00:00:00`).getDay();
         const dayHours = initialWorkingHours.filter(
           (wh) =>
@@ -336,7 +335,7 @@ export default function BookingClient({
                   minDuration
                 ),
                 candidate
-              ).some((slot) => !isSlotTaken(slot, minDuration, ranges))
+              ).some((slot) => !isSlotTaken(slot, minDuration, ranges, candidate))
             );
           })
         );
@@ -378,7 +377,8 @@ export default function BookingClient({
     }
 
     const availableSlots = slots.filter(
-      (slot) => !isSlotTaken(slot, selectedService.duration, bookedRanges)
+      (slot) =>
+        !isSlotTaken(slot, selectedService.duration, bookedRanges, selectedDate)
     );
     if (availableSlots.length > 0) return;
 
@@ -387,8 +387,7 @@ export default function BookingClient({
     const serviceDuration = selectedService.duration;
 
     async function findBarberDate() {
-      const todayDate = new Date().toLocaleDateString("en-CA");
-      const todayMinutes = getJakartaMinutes();
+      const { date: todayDate, minutes: todayMinutes } = getJakartaNow();
       const weekday = new Date(`${selectedDate}T00:00:00`).getDay();
       const sameDayBarbers = barbers.flatMap((barber) => {
         if (barber.id === barberId) return [];
@@ -417,7 +416,9 @@ export default function BookingClient({
                 selectedDate
               )
             )
-            .filter((slot) => !isSlotTaken(slot, serviceDuration, ranges));
+            .filter((slot) =>
+              !isSlotTaken(slot, serviceDuration, ranges, selectedDate)
+            );
           const timeMinutes = Math.min(...availableSlots);
 
           return Number.isFinite(timeMinutes)
@@ -457,7 +458,7 @@ export default function BookingClient({
         const candidateDate = new Date(startDate);
         candidateDate.setDate(candidateDate.getDate() + offset);
         const candidate = candidateDate.toLocaleDateString("en-CA");
-        const todayMinutes = getJakartaMinutes();
+        const todayMinutes = getJakartaNow().minutes;
         const candidateWeekday = candidateDate.getDay();
         const dayHours = workingHours.filter(
           (hour) =>
@@ -477,7 +478,7 @@ export default function BookingClient({
               serviceDuration
             ),
             candidate
-          ).some((slot) => !isSlotTaken(slot, serviceDuration, ranges))
+          ).some((slot) => !isSlotTaken(slot, serviceDuration, ranges, candidate))
         );
 
         if (cancelled || dateTouchedRef.current) return;
@@ -512,7 +513,7 @@ export default function BookingClient({
     (slot) =>
       selectedService !== undefined &&
       (isAnyBarberSelected ||
-        !isSlotTaken(slot, selectedService.duration, bookedRanges))
+        !isSlotTaken(slot, selectedService.duration, bookedRanges, selectedDate))
   );
   const validSelectedSlot =
     selectedSlot !== null && availableSlots.includes(selectedSlot)
@@ -567,7 +568,7 @@ export default function BookingClient({
       Math.max(latest, timeToMinutes(hour.end_time)),
     -1
   );
-  const todayMinutes = getJakartaMinutes();
+  const todayMinutes = getJakartaNow().minutes;
   const todayOperationalHoursEnded =
     selectedDate === today &&
     closingMinutes >= 0 &&
@@ -578,7 +579,9 @@ export default function BookingClient({
      !isAnyBarberSelected &&
      selectedService !== undefined &&
      slots.length > 0 &&
-     slots.every((slot) => isSlotTaken(slot, selectedService.duration, bookedRanges));
+     slots.every((slot) =>
+       isSlotTaken(slot, selectedService.duration, bookedRanges, selectedDate)
+     );
 
   return (
     <div>
@@ -713,29 +716,18 @@ export default function BookingClient({
               </p>
               {selectedBarber && sameDayOffer &&
                 slots.every((slot) =>
-                  isSlotTaken(slot, selectedService.duration, bookedRanges)
+                  isSlotTaken(
+                    slot,
+                    selectedService.duration,
+                    bookedRanges,
+                    selectedDate
+                  )
                 ) && (
                 <div className="mt-4 rounded-xl bg-sky-50 p-3 text-xs text-sky-700">
-                  <p className="font-semibold">
-                    Slot untuk {selectedBarber.name} sudah habis.
-                  </p>
-                  <p className="mt-1">{formatTanggalLabel(selectedDate)}</p>
-                  <p className="mt-2">
-                    {sameDayOffer.barberName} masih punya slot.
-                  </p>
                   <p>
-                    Slot terdekat: {minutesToTime(sameDayOffer.timeMinutes)} WIB.
+                    Kapster lain kosong: {sameDayOffer.barberName}, jam{" "}
+                    {minutesToTime(sameDayOffer.timeMinutes)} WIB.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      chooseBarber(sameDayOffer.barberId);
-                      setSameDayOffer(null);
-                    }}
-                    className="mt-2 rounded-full border border-gold px-3 py-1.5 font-semibold text-ink hover:bg-gold/10"
-                  >
-                    Ganti ke {sameDayOffer.barberName} · {minutesToTime(sameDayOffer.timeMinutes)} WIB
-                  </button>
                 </div>
               )}
 
@@ -757,7 +749,8 @@ export default function BookingClient({
                          const taken = !isAnyBarberSelected && isSlotTaken(
                            slot,
                            selectedService.duration,
-                           bookedRanges
+                           bookedRanges,
+                           selectedDate
                          );
                          const isSelected = slot === validSelectedSlot;
                          return (

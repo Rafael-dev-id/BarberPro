@@ -44,7 +44,6 @@ export default function AdminBookingsTable({
   const [live, setLive] = useState<string>("MENYAMBUNG…");
   const [page, setPage] = useState<number>(1);
   const [showWalkIn, setShowWalkIn] = useState(false);
-  const [currentTime, setCurrentTime] = useState<number | null>(null);
   const [walkInMessage, setWalkInMessage] = useState("");
   const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
 
@@ -75,10 +74,8 @@ export default function AdminBookingsTable({
   useEffect(() => {
     const timer = setTimeout(() => {
        setMounted(true);
-       setCurrentTime(Date.now());
     }, 0);
     const clockTimer = setInterval(() => {
-      setCurrentTime(Date.now());
       void reload();
     }, 30_000);
 

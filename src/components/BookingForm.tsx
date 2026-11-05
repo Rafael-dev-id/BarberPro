@@ -98,6 +98,7 @@ export default function BookingForm({
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.
   useEffect(() => {
+     // eslint-disable-next-line react-hooks/set-state-in-effect
      setStatus((current) => current === "error" ? "idle" : current);
      setServerMessage("");
   }, [date, serviceId, barberId]);
