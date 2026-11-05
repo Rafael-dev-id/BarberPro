@@ -64,6 +64,19 @@ function listSmartCandidateDates(workingHours: WorkingHour[]): string[] {
   return candidates.length > 0 ? candidates : [today];
 }
 
+function getJakartaMinutes(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  return (
+    Number(parts.find((part) => part.type === "hour")?.value ?? 0) * 60 +
+    Number(parts.find((part) => part.type === "minute")?.value ?? 0)
+  );
+}
+
 export default function BookingClient({
   services,
   barbers,
@@ -297,16 +310,7 @@ export default function BookingClient({
           return;
         }
 
-        const jakartaTimeParts = new Intl.DateTimeFormat("en-GB", {
-          timeZone: "Asia/Jakarta",
-          hour: "2-digit",
-          minute: "2-digit",
-          hourCycle: "h23",
-        }).formatToParts(new Date());
-        const todayMinutes =
-          Number(jakartaTimeParts.find((part) => part.type === "hour")?.value ?? 0) *
-            60 +
-          Number(jakartaTimeParts.find((part) => part.type === "minute")?.value ?? 0);
+        const todayMinutes = getJakartaMinutes();
         const weekday = new Date(`${candidate}T00:00:00`).getDay();
         const dayHours = initialWorkingHours.filter(
           (wh) =>
@@ -384,7 +388,7 @@ export default function BookingClient({
 
     async function findBarberDate() {
       const todayDate = new Date().toLocaleDateString("en-CA");
-      const todayMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+      const todayMinutes = getJakartaMinutes();
       const weekday = new Date(`${selectedDate}T00:00:00`).getDay();
       const sameDayBarbers = barbers.flatMap((barber) => {
         if (barber.id === barberId) return [];
@@ -453,8 +457,7 @@ export default function BookingClient({
         const candidateDate = new Date(startDate);
         candidateDate.setDate(candidateDate.getDate() + offset);
         const candidate = candidateDate.toLocaleDateString("en-CA");
-        const now = new Date();
-        const todayMinutes = now.getHours() * 60 + now.getMinutes();
+        const todayMinutes = getJakartaMinutes();
         const candidateWeekday = candidateDate.getDay();
         const dayHours = workingHours.filter(
           (hour) =>
@@ -564,8 +567,7 @@ export default function BookingClient({
       Math.max(latest, timeToMinutes(hour.end_time)),
     -1
   );
-  const now = new Date();
-  const todayMinutes = now.getHours() * 60 + now.getMinutes();
+  const todayMinutes = getJakartaMinutes();
   const todayOperationalHoursEnded =
     selectedDate === today &&
     closingMinutes >= 0 &&
