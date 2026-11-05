@@ -9,6 +9,7 @@ import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
 import CashierPanel, { CashierRevenueTable } from "@/components/CashierPanel";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import WalkInForm from "@/components/WalkInForm";
 
 const statusColors: Record<string, string> = {
@@ -21,6 +22,12 @@ const statusColors: Record<string, string> = {
 
 const fmtDay = (d: Date) =>
   d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }).toLowerCase();
+const jakartaTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jakarta",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 export default function AdminBookingsTable({
   initialBookings,
@@ -48,6 +55,11 @@ export default function AdminBookingsTable({
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [walkInMessage, setWalkInMessage] = useState("");
   const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
+  const [pendingAction, setPendingAction] = useState<{
+    id: number;
+    status: "done" | "cancelled";
+  } | null>(null);
+  const [actionError, setActionError] = useState("");
 
   async function reload() {
     const supabase = createSupabaseBrowserClient();
@@ -115,22 +127,63 @@ export default function AdminBookingsTable({
     };
   }, []);
 
-  async function handleStatus(bookingId: number, newStatus: string) {
-    if (newStatus === "cancelled") {
-      const customer_name = bookings.find((b) => b.id === bookingId)?.customer_name;
-      const yakin = window.confirm(`Batalkan booking atas nama ${customer_name}?`);
-      if (!yakin) return;
-    }
-
+  async function applyStatus(bookingId: number, newStatus: string): Promise<boolean> {
     setBusyId(bookingId);
-    const result = await updateBookingStatus(bookingId, newStatus);
-    setBusyId(null);
-    if (!result.ok) {
-      window.alert(result.message);
-    } else {
+    setActionError("");
+    try {
+      const result = await updateBookingStatus(bookingId, newStatus);
+      if (!result.ok) {
+        setActionError(result.message);
+        return false;
+      }
       await reload();
+      return true;
+    } catch {
+      setActionError("Gagal terhubung. Coba lagi.");
+      return false;
+    } finally {
+      setBusyId(null);
     }
   }
+
+  function handleStatus(bookingId: number, newStatus: string) {
+    if (newStatus === "done" || newStatus === "cancelled") {
+      setPendingAction({ id: bookingId, status: newStatus });
+      return;
+    }
+    void applyStatus(bookingId, newStatus);
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction) return;
+    await applyStatus(pendingAction.id, pendingAction.status);
+    setPendingAction(null);
+  }
+
+  const pendingBooking = pendingAction
+    ? bookings.find((booking) => booking.id === pendingAction.id)
+    : undefined;
+  const pendingActionValid =
+    pendingBooking &&
+    ((pendingAction?.status === "done" && pendingBooking.status === "started") ||
+      (pendingAction?.status === "cancelled" &&
+        (pendingBooking.status === "confirmed" || pendingBooking.status === "started")));
+  const pendingDate = pendingBooking
+    ? new Intl.DateTimeFormat("id-ID", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        timeZone: "Asia/Jakarta",
+      })
+        .format(new Date(pendingBooking.starts_at))
+        .replace(/\.$/, "")
+        .toLowerCase()
+    : "";
+  const pendingSchedule = pendingBooking
+    ? `${pendingDate} · ${jakartaTimeFormatter.format(new Date(pendingBooking.starts_at))}`
+    : "";
+  const notifyCustomer =
+    pendingBooking && !pendingBooking.customer_phone.startsWith("walkin-");
 
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
   const startToday = new Date(`${todayStr}T00:00:00+07:00`).getTime();
@@ -220,6 +273,22 @@ export default function AdminBookingsTable({
         busyId={busyId}
         onFinish={(id) => handleStatus(id, "done")}
       />
+
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p>{actionError}</p>
+          <button
+            type="button"
+            onClick={() => setActionError("")}
+            className="shrink-0 rounded-lg border border-red-300 px-3 py-1 font-semibold hover:bg-red-100"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
 
       <div className="flex justify-between items-center pt-8 pb-3">
          <div className="flex flex-wrap items-center gap-3">
@@ -479,6 +548,48 @@ export default function AdminBookingsTable({
         </div>
       </div>
       <CashierRevenueTable bookings={bookings} barbers={barbers} />
+      <ConfirmDialog
+        open={Boolean(pendingActionValid)}
+        tone={pendingAction?.status === "done" ? "success" : "danger"}
+        title={
+          pendingAction?.status === "done"
+            ? "Selesaikan sesi?"
+            : "Batalkan booking?"
+        }
+        details={
+          pendingBooking
+            ? [
+                { label: "Pelanggan", value: pendingBooking.customer_name },
+                { label: "Layanan", value: pendingBooking.services?.name ?? "-" },
+                { label: "Kapster", value: pendingBooking.barbers?.name ?? "-" },
+                { label: "Jadwal", value: pendingSchedule },
+                {
+                  label: "Total",
+                  value: formatRupiah(pendingBooking.services?.price ?? 0),
+                },
+              ]
+            : []
+        }
+        note={
+          pendingAction?.status === "done"
+            ? `Sesi ditutup dan tidak bisa dibatalkan dari dashboard.${
+                notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
+              }`
+            : `Slot akan dibuka kembali.${
+                notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
+              }`
+        }
+        confirmLabel={
+          pendingAction?.status === "done"
+            ? `Ya, selesai · ${formatRupiah(pendingBooking?.services?.price ?? 0)}`
+            : "Ya, batalkan"
+        }
+        busy={pendingAction !== null && busyId === pendingAction.id}
+        onConfirm={() => void confirmPendingAction()}
+        onCancel={() => {
+          if (busyId === null) setPendingAction(null);
+        }}
+      />
     </>
   );
 }
