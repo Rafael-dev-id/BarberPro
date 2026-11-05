@@ -151,29 +151,29 @@ export default function WalkInForm({
   }
 
   return (
-    <div className="mb-5 rounded-2xl border border-gold/40 bg-ink/60 p-4">
+    <div className="mb-5 rounded-2xl border border-line bg-cream p-4">
       <h3 className="font-display text-lg font-semibold">Catat walk-in</h3>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Nama
           <input
             required
             minLength={3}
             value={customerName}
             onChange={(event) => setCustomerName(event.target.value)}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           />
         </label>
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Nomor WA (opsional)
           <input
             type="tel"
             value={customerPhone}
             onChange={(event) => setCustomerPhone(event.target.value)}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           />
         </label>
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Layanan
           <select
             required
@@ -184,7 +184,7 @@ export default function WalkInForm({
               setSlotMinutes("");
               setLoadingSlots(false);
             }}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           >
             <option value="">Pilih layanan</option>
             {services.map((item) => (
@@ -194,7 +194,7 @@ export default function WalkInForm({
             ))}
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Kapster
           <select
             required
@@ -205,7 +205,7 @@ export default function WalkInForm({
               setSlotMinutes("");
               setLoadingSlots(false);
             }}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           >
             <option value="">Pilih kapster</option>
             {barbers.map((item) => (
@@ -215,7 +215,7 @@ export default function WalkInForm({
             ))}
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Tanggal
           <input
             type="date"
@@ -228,17 +228,17 @@ export default function WalkInForm({
               setSlotMinutes("");
               setLoadingSlots(false);
             }}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           />
         </label>
-        <label className="grid gap-1 text-xs text-cream/70">
+        <label className="grid gap-1 text-sm font-semibold text-ink">
           Jam
           <select
             required
             value={slotMinutes}
             disabled={loadingSlots || availableSlots.length === 0}
             onChange={(event) => setSlotMinutes(event.target.value)}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream disabled:opacity-50"
+            className="input-premium disabled:opacity-50"
           >
             {availableSlots.length === 0 ? (
               <option value="">
@@ -253,20 +253,20 @@ export default function WalkInForm({
             )}
           </select>
         </label>
-        <label className="grid gap-1 text-xs text-cream/70 sm:col-span-2">
+        <label className="grid gap-1 text-sm font-semibold text-ink sm:col-span-2">
           Catatan (opsional)
           <textarea
             maxLength={300}
             rows={2}
             value={customerNotes}
             onChange={(event) => setCustomerNotes(event.target.value)}
-            className="rounded-xl border border-cream/15 bg-ink px-3 py-2 text-sm text-cream"
+            className="input-premium"
           />
         </label>
       </div>
 
       {errorMessage && (
-        <p role="alert" className="mt-3 text-sm text-red-300">
+        <p role="alert" className="mt-3 text-sm text-red-700">
           {errorMessage}
         </p>
       )}
@@ -278,7 +278,7 @@ export default function WalkInForm({
             submitting || loadingSlots || !slotMinutes || customerName.trim().length < 3
           }
           onClick={() => void save(false)}
-          className="rounded-xl bg-gold px-4 py-2 text-sm font-bold text-ink disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-gold px-4 py-2 text-sm font-bold text-ink hover:bg-gold-soft disabled:opacity-50"
         >
           {submitting ? "Menyimpan…" : "Simpan ke antre"}
         </button>
@@ -288,7 +288,7 @@ export default function WalkInForm({
             submitting || loadingSlots || !slotMinutes || customerName.trim().length < 3
           }
           onClick={() => void save(true)}
-          className="rounded-xl border border-sky-400 px-4 py-2 text-sm font-bold text-sky-200 disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50"
         >
           Mulai sekarang
         </button>

@@ -9,7 +9,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const { data: { user } } = await supabase.auth.getUser();
    
   return (
-    <div className="min-h-screen bg-ink text-cream">
+    <div className="min-h-screen bg-cream text-ink">
       <header className="sticky top-0 z-20 border-b border-cream/10 bg-ink/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Link href="/admin" className="font-display text-lg font-bold">

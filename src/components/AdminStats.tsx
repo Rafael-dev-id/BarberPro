@@ -48,10 +48,12 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
    
    return (
       <>
-         <p className="eyebrow">Ringkasan</p>
-         <h1 className="font-display mt-2 text-3xl font-semibold">Dashboard</h1>
-   
-         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+         <section className="card p-5 sm:p-6">
+         <h1 className="font-display text-xl font-semibold">Ringkasan hari ini</h1>
+         <p className="mt-1 text-sm text-ink/70">
+           Ringkasan booking, pendapatan, dan aktivitas kapster.
+         </p>
+         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
            <StatCard
              label="Booking Hari Ini"
              value={String(todayBookings.length)}
@@ -75,6 +77,7 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
              icon={<Crown size={18} />}
            />
          </div>
+         </section>
       </>
    );
 }
