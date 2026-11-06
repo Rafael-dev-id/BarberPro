@@ -2,6 +2,7 @@ import { CalendarCheck, Wallet, Hourglass, Crown } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { type BookingRow } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
+import { jakartaDateKey } from "@/lib/booking-state";
 
 export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
    const all = bookings ?? [];
@@ -12,13 +13,9 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
    const today = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Jakarta",
    });
-   const dayStart = new Date(`${today}T00:00:00+07:00`).getTime();
-   const dayEnd = new Date(`${today}T23:59:59+07:00`).getTime();
-
-   const todayBookings = all.filter((b) => {
-      const t = new Date(b.starts_at).getTime();
-      return t >= dayStart && t <= dayEnd;
-   });
+   const todayBookings = all.filter(
+      (b) => b.status !== "cancelled" && jakartaDateKey(b.starts_at) === today
+   );
 
    const doneToday = todayBookings.filter((b) => b.status === "done");
 
@@ -27,7 +24,12 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
       0
    );
 
-   const startedCount = all.filter((b) => b.status === "started").length;
+   const startedToday = all.filter(
+      (b) => b.status === "started" && jakartaDateKey(b.starts_at) === today
+   );
+   const staleStartedCount = all.filter(
+      (b) => b.status === "started" && jakartaDateKey(b.starts_at) < today
+   ).length;
 
    // Barber tersibuk (semua waktu, booking tidak batal)
    const counts = new Map<string, number>();
@@ -67,7 +69,12 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
            />
            <StatCard
              label="Sedang Dikerjakan"
-             value={String(startedCount)}
+             value={String(startedToday.length)}
+             sub={
+               staleStartedCount > 0
+                  ? `${staleStartedCount} belum ditutup`
+                  : undefined
+             }
              icon={<Hourglass size={18} />}
            />
            <StatCard
