@@ -285,13 +285,20 @@ export default function WalkInForm({
         <button
           type="button"
           disabled={
-            submitting || loadingSlots || !slotMinutes || customerName.trim().length < 3
+            submitting ||
+            loadingSlots ||
+            !slotMinutes ||
+            customerName.trim().length < 3 ||
+            date !== today
           }
           onClick={() => void save(true)}
           className="min-h-11 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50"
         >
           Mulai sekarang
         </button>
+        {date !== today && (
+          <p className="self-center text-sm text-ink/70">Hanya untuk hari ini.</p>
+        )}
       </div>
     </div>
   );

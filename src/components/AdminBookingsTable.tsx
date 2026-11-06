@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
+import { getRowState, jakartaDateKey } from "@/lib/booking-state";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
@@ -43,13 +44,18 @@ const jakartaDateFormatter = new Intl.DateTimeFormat("id-ID", {
   timeZone: "Asia/Jakarta",
 });
 
-function formatBookingDateTime(iso: string): string {
-  const date = new Date(iso);
+function formatBookingDateLabel(input: string | number | Date): string {
+  const date = new Date(input);
   const parts = jakartaDateFormatter.formatToParts(date);
   const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
   const weekday = part("weekday").replace(/\.$/, "");
   const month = part("month").toLowerCase();
-  return `${weekday}, ${part("day")} ${month} · ${jakartaTimeFormatter.format(date)}`;
+  return `${weekday}, ${part("day")} ${month}`;
+}
+
+function formatBookingDateTime(iso: string): string {
+  const date = new Date(iso);
+  return `${formatBookingDateLabel(date)} · ${jakartaTimeFormatter.format(date)}`;
 }
 
 export default function AdminBookingsTable({
@@ -64,6 +70,7 @@ export default function AdminBookingsTable({
   workingHours: WorkingHour[];
 }) {
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all" | "custom">("today");
   const [status, setStatus] = useState<"all" | "confirmed" | "started" | "done" | "cancelled">("all");
@@ -150,6 +157,15 @@ export default function AdminBookingsTable({
     };
   }, []);
 
+  useEffect(() => {
+    const clockTimer = setTimeout(() => setNowMs(Date.now()), 0);
+    const interval = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => {
+      clearTimeout(clockTimer);
+      clearInterval(interval);
+    };
+  }, []);
+
   async function applyStatus(bookingId: number, newStatus: string): Promise<boolean> {
     setBusyId(bookingId);
     setActionError("");
@@ -188,7 +204,11 @@ export default function AdminBookingsTable({
     : undefined;
   const pendingActionValid =
     pendingBooking &&
-    ((pendingAction?.status === "done" && pendingBooking.status === "started") ||
+    ((pendingAction?.status === "done" &&
+      (pendingBooking.status === "started" ||
+        (pendingBooking.status === "confirmed" &&
+          nowMs !== null &&
+          getRowState(pendingBooking, nowMs) === "overdue"))) ||
       (pendingAction?.status === "cancelled" &&
         (pendingBooking.status === "confirmed" || pendingBooking.status === "started")));
 
@@ -484,7 +504,10 @@ export default function AdminBookingsTable({
                 </td>
               </tr>
             ) : (
-              rows.map((b) => (
+              rows.map((b) => {
+                const rowState =
+                  nowMs === null ? "other" : getRowState(b, nowMs);
+                return (
                 <tr key={b.id} className="border-b border-line">
                   <td className="py-3 pr-3">
                     {formatBookingDateTime(b.starts_at)}
@@ -512,7 +535,32 @@ export default function AdminBookingsTable({
                     >
                       {statusLabels[b.status] ?? b.status}
                     </span>
-                    {b.status === "confirmed" && isTooCloseToCancel(b.starts_at) && (
+                    {rowState === "overdue" && b.status === "confirmed" && (
+                      <span
+                        title="Jadwal sudah lewat lebih dari 15 menit"
+                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+                      >
+                        Terlewat
+                      </span>
+                    )}
+                    {rowState === "stale_session" && (
+                      <span
+                        title="Sesi dimulai di hari sebelumnya dan belum ditutup"
+                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+                      >
+                        Belum ditutup
+                      </span>
+                    )}
+                    {rowState === "future_session" && (
+                      <span className="ml-1 inline-flex rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-900">
+                        Jadwal belum tiba
+                      </span>
+                    )}
+                    {b.status === "confirmed" &&
+                      rowState === "today" &&
+                      nowMs !== null &&
+                      new Date(b.starts_at).getTime() > nowMs &&
+                      isTooCloseToCancel(b.starts_at) && (
                       <span
                         title="Kurang dari 30 menit lagi"
                         className="ml-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900"
@@ -532,7 +580,16 @@ export default function AdminBookingsTable({
                         Konfirmasi
                       </button>
                     )}
-                    {b.status === "confirmed" && (
+                    {b.status === "confirmed" && rowState === "upcoming" && (
+                      <span className="mr-2 text-sm text-ink/70">
+                        {nowMs !== null &&
+                        jakartaDateKey(b.starts_at) ===
+                          jakartaDateKey(nowMs + 86_400_000)
+                          ? "Mulai besok"
+                          : `Mulai ${formatBookingDateLabel(b.starts_at)}`}
+                      </span>
+                    )}
+                    {b.status === "confirmed" && rowState === "today" && (
                       <button
                         type="button"
                         disabled={busyId === b.id}
@@ -542,7 +599,9 @@ export default function AdminBookingsTable({
                         Mulai sekarang
                       </button>
                     )}
-                    {b.status === "started" && (
+                    {((b.status === "started" &&
+                      (rowState === "in_session" || rowState === "stale_session")) ||
+                      (b.status === "confirmed" && rowState === "overdue")) && (
                       <button
                         type="button"
                         disabled={busyId === b.id}
@@ -564,7 +623,8 @@ export default function AdminBookingsTable({
                     )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -608,11 +668,21 @@ export default function AdminBookingsTable({
               ]
             : []
         }
+        warnings={
+          pendingAction?.status === "done"
+            ? [
+                "Sesi ditutup dan tidak bisa dibatalkan dari dashboard.",
+                ...(pendingBooking?.status === "confirmed"
+                  ? ["Booking ini belum pernah dimulai; sesi akan dicatat selesai."]
+                  : []),
+              ]
+            : undefined
+        }
         note={
           pendingAction?.status === "done"
-            ? `Sesi ditutup dan tidak bisa dibatalkan dari dashboard.${
-                notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
-              }`
+            ? notifyCustomer
+              ? "Pelanggan akan dikabari lewat WhatsApp."
+              : undefined
             : `Slot akan dibuka kembali.${
                 notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
               }`
