@@ -66,6 +66,7 @@ export default function ConfirmDialog({
         if (event.target === event.currentTarget && !busy) onCancel();
       }}
       aria-labelledby="confirm-dialog-title"
+      aria-describedby={note ? "confirm-dialog-note" : undefined}
     >
       <div className="rounded-2xl bg-white p-6 shadow-2xl">
         <div
@@ -89,7 +90,11 @@ export default function ConfirmDialog({
             </div>
           ))}
         </dl>
-        {note && <p className="mt-4 text-sm text-ink/70">{note}</p>}
+        {note && (
+          <p id="confirm-dialog-note" className="mt-4 text-sm text-ink/70">
+            {note}
+          </p>
+        )}
         <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
           <button
             type="button"
