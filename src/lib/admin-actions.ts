@@ -178,6 +178,12 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
 
    const data = parsed.data;
    const { date: todayStr, minutes: nowMinutes } = getJakartaNow();
+   if (data.startNow && data.date !== todayStr) {
+      return {
+         ok: false as const,
+         message: "Mulai sekarang hanya untuk walk-in hari ini.",
+      };
+   }
    const phoneInput = data.customerPhone?.trim() ?? "";
    if (phoneInput && !isValidIndonesianPhone(phoneInput)) {
       return { ok: false as const, message: "Nomor WA tidak valid." };
