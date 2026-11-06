@@ -31,6 +31,9 @@ export default function MarketingNav() {
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <Link
             href="/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Demo Owner (membuka tab baru)"
             className="hidden whitespace-nowrap rounded-full border border-gold px-4 py-2 text-xs font-bold text-gold transition hover:bg-gold/10 sm:inline-flex"
           >
             Demo Owner
@@ -67,7 +70,14 @@ export default function MarketingNav() {
                 {l.label}
               </Link>
             ))}
-            <Link href="/admin" onClick={() => setOpen(false)} className="py-3 text-sm font-semibold text-gold">
+            <Link
+              href="/admin"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Demo Owner (membuka tab baru)"
+              onClick={() => setOpen(false)}
+              className="py-3 text-sm font-semibold text-gold"
+            >
               Demo Owner
             </Link>
           </div>
