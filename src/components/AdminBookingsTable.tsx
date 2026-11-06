@@ -323,7 +323,7 @@ export default function AdminBookingsTable({
 
   return (
     <>
-      <AdminStats bookings={bookings} />
+      <AdminStats bookings={bookings} nowMs={nowMs} />
       <section className="card mt-8 p-5 sm:p-6">
         <h2 className="font-display text-xl font-semibold">Kasir</h2>
         <p className="mt-1 text-sm text-ink/70">
