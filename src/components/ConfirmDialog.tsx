@@ -8,6 +8,7 @@ interface ConfirmDialogProps {
   tone: "success" | "danger";
   title: string;
   details: { label: string; value: string }[];
+  warnings?: string[];
   note?: string;
   confirmLabel: string;
   cancelLabel?: string;
@@ -21,6 +22,7 @@ export default function ConfirmDialog({
   tone,
   title,
   details,
+  warnings,
   note,
   confirmLabel,
   cancelLabel = "Batal",
@@ -53,6 +55,12 @@ export default function ConfirmDialog({
     tone === "success"
       ? "bg-emerald-600 hover:bg-emerald-700"
       : "bg-red-600 hover:bg-red-700";
+  const describedBy = [
+    warnings?.length ? "confirm-dialog-warnings" : null,
+    note ? "confirm-dialog-note" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <dialog
@@ -66,7 +74,7 @@ export default function ConfirmDialog({
         if (event.target === event.currentTarget && !busy) onCancel();
       }}
       aria-labelledby="confirm-dialog-title"
-      aria-describedby={note ? "confirm-dialog-note" : undefined}
+      aria-describedby={describedBy || undefined}
     >
       <div className="rounded-2xl bg-white p-6 shadow-2xl">
         <div
@@ -90,6 +98,23 @@ export default function ConfirmDialog({
             </div>
           ))}
         </dl>
+        {warnings && warnings.length > 0 && (
+          <ul
+            id="confirm-dialog-warnings"
+            className="mt-4 space-y-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"
+          >
+            {warnings.map((warning) => (
+              <li key={warning} className="flex items-start gap-2">
+                <AlertTriangle
+                  size={16}
+                  className="mt-0.5 shrink-0 text-amber-600"
+                  aria-hidden="true"
+                />
+                <span>{warning}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         {note && (
           <p id="confirm-dialog-note" className="mt-4 text-sm text-ink/70">
             {note}

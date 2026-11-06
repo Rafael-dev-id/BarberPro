@@ -659,15 +659,21 @@ export default function AdminBookingsTable({
               ]
             : []
         }
+        warnings={
+          pendingAction?.status === "done"
+            ? [
+                "Sesi ditutup dan tidak bisa dibatalkan dari dashboard.",
+                ...(pendingBooking?.status === "confirmed"
+                  ? ["Booking ini belum pernah dimulai; sesi akan dicatat selesai."]
+                  : []),
+              ]
+            : undefined
+        }
         note={
           pendingAction?.status === "done"
-            ? `Sesi ditutup dan tidak bisa dibatalkan dari dashboard.${
-                pendingBooking?.status === "confirmed"
-                  ? " Booking ini belum pernah dimulai; sesi akan dicatat selesai."
-                  : ""
-              }${
-                notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
-              }`
+            ? notifyCustomer
+              ? "Pelanggan akan dikabari lewat WhatsApp."
+              : undefined
             : `Slot akan dibuka kembali.${
                 notifyCustomer ? " Pelanggan akan dikabari lewat WhatsApp." : ""
               }`
