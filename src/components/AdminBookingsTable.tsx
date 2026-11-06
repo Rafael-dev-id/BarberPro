@@ -5,7 +5,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
-import { getRowState, jakartaDateKey } from "@/lib/booking-state";
+import {
+  getRowState,
+  jakartaDateKey,
+  minutesPastEnd,
+} from "@/lib/booking-state";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
@@ -551,6 +555,16 @@ export default function AdminBookingsTable({
                         Belum ditutup
                       </span>
                     )}
+                    {rowState === "overtime" && nowMs !== null && (
+                      <span
+                        title={`Estimasi selesai ${jakartaTimeFormatter.format(
+                          new Date(b.ends_at)
+                        )} sudah lewat ${minutesPastEnd(b.ends_at, nowMs)} menit`}
+                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+                      >
+                        Lewat estimasi
+                      </span>
+                    )}
                     {rowState === "future_session" && (
                       <span className="ml-1 inline-flex rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-900">
                         Jadwal belum tiba
@@ -600,7 +614,9 @@ export default function AdminBookingsTable({
                       </button>
                     )}
                     {((b.status === "started" &&
-                      (rowState === "in_session" || rowState === "stale_session")) ||
+                      (rowState === "in_session" ||
+                        rowState === "overtime" ||
+                        rowState === "stale_session")) ||
                       (b.status === "confirmed" && rowState === "overdue")) && (
                       <button
                         type="button"
