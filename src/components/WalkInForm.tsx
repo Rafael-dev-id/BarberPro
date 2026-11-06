@@ -275,11 +275,7 @@ export default function WalkInForm({
         <button
           type="button"
           disabled={
-            submitting ||
-            loadingSlots ||
-            !slotMinutes ||
-            customerName.trim().length < 3 ||
-            date !== today
+            submitting || loadingSlots || !slotMinutes || customerName.trim().length < 3
           }
           onClick={() => void save(false)}
           className="min-h-11 rounded-xl bg-gold px-4 py-2 text-sm font-bold text-ink hover:bg-gold-soft disabled:opacity-50"
@@ -289,7 +285,11 @@ export default function WalkInForm({
         <button
           type="button"
           disabled={
-            submitting || loadingSlots || !slotMinutes || customerName.trim().length < 3
+            submitting ||
+            loadingSlots ||
+            !slotMinutes ||
+            customerName.trim().length < 3 ||
+            date !== today
           }
           onClick={() => void save(true)}
           className="min-h-11 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:opacity-50"
