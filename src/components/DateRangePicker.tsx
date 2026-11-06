@@ -49,7 +49,7 @@ export default function DateRangePicker({ onSendRange }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mb-2 rounded-xl border border-cream/15 bg-ink px-3 py-2 text-xs text-cream/70 transition hover:border-gold/40 hover:text-cream"
+        className="mb-2 min-h-11 rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold text-ink transition hover:border-gold"
       >
         {complete
           ? `Ubah rentang: ${fmtDay((value as [Date, Date])[0])} – ${fmtDay((value as [Date, Date])[1])}`
@@ -61,11 +61,11 @@ export default function DateRangePicker({ onSendRange }: Props) {
   // ---- keadaan terbuka: panel melayang + backdrop, nol pergeseran layout ----
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-sm rounded-2xl shadow-2xl"
+        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <Calendar
@@ -77,11 +77,11 @@ export default function DateRangePicker({ onSendRange }: Props) {
           minDate={fenceStart ?? undefined}
           maxDate={maxDate}
         />
-        <div className="mt-2 flex justify-end gap-2 rounded-b-2xl bg-ink px-4 pb-4">
+        <div className="mt-2 flex justify-end gap-2 rounded-b-2xl bg-white px-4 pb-4">
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded-xl border border-cream/20 px-3 py-2 text-xs font-bold text-cream/70 transition hover:border-cream/50 hover:text-cream"
+            className="min-h-11 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:bg-cream"
           >
             Batal
           </button>
@@ -89,7 +89,7 @@ export default function DateRangePicker({ onSendRange }: Props) {
             type="button"
             disabled={!complete}
             onClick={sendRange}
-            className="rounded-xl bg-gold px-4 py-2 text-xs font-bold text-ink transition hover:bg-gold-soft disabled:opacity-50"
+            className="min-h-11 rounded-xl bg-gold px-4 py-2 text-sm font-bold text-ink transition hover:bg-gold-soft disabled:opacity-50"
           >
             Terapkan
           </button>
