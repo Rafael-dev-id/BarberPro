@@ -191,6 +191,13 @@ export default function AdminBookingsTable({
     ((pendingAction?.status === "done" && pendingBooking.status === "started") ||
       (pendingAction?.status === "cancelled" &&
         (pendingBooking.status === "confirmed" || pendingBooking.status === "started")));
+
+  useEffect(() => {
+    if (!pendingAction || pendingActionValid || busyId === pendingAction.id) return;
+    const timer = setTimeout(() => setPendingAction(null), 0);
+    return () => clearTimeout(timer);
+  }, [pendingAction, pendingActionValid, busyId]);
+
   const pendingSchedule = pendingBooking
     ? formatBookingDateTime(pendingBooking.starts_at)
     : "";
@@ -618,7 +625,7 @@ export default function AdminBookingsTable({
         busy={pendingAction !== null && busyId === pendingAction.id}
         onConfirm={() => void confirmPendingAction()}
         onCancel={() => {
-          if (busyId === null) setPendingAction(null);
+          if (busyId !== pendingAction?.id) setPendingAction(null);
         }}
       />
     </>
