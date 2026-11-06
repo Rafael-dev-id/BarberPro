@@ -5,7 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
-import { getRowState } from "@/lib/booking-state";
+import { getRowState, jakartaDateKey } from "@/lib/booking-state";
 import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
@@ -44,13 +44,18 @@ const jakartaDateFormatter = new Intl.DateTimeFormat("id-ID", {
   timeZone: "Asia/Jakarta",
 });
 
-function formatBookingDateTime(iso: string): string {
-  const date = new Date(iso);
+function formatBookingDateLabel(input: string | number | Date): string {
+  const date = new Date(input);
   const parts = jakartaDateFormatter.formatToParts(date);
   const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
   const weekday = part("weekday").replace(/\.$/, "");
   const month = part("month").toLowerCase();
-  return `${weekday}, ${part("day")} ${month} · ${jakartaTimeFormatter.format(date)}`;
+  return `${weekday}, ${part("day")} ${month}`;
+}
+
+function formatBookingDateTime(iso: string): string {
+  const date = new Date(iso);
+  return `${formatBookingDateLabel(date)} · ${jakartaTimeFormatter.format(date)}`;
 }
 
 export default function AdminBookingsTable({
@@ -577,7 +582,11 @@ export default function AdminBookingsTable({
                     )}
                     {b.status === "confirmed" && rowState === "upcoming" && (
                       <span className="mr-2 text-sm text-ink/70">
-                        Mulai di hari H
+                        {nowMs !== null &&
+                        jakartaDateKey(b.starts_at) ===
+                          jakartaDateKey(nowMs + 86_400_000)
+                          ? "Mulai besok"
+                          : `Mulai ${formatBookingDateLabel(b.starts_at)}`}
                       </span>
                     )}
                     {b.status === "confirmed" && rowState === "today" && (
