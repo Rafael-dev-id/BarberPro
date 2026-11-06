@@ -11,6 +11,7 @@ import {
 import { getBookedSlots, minutesToIso } from "@/lib/booking-actions";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
+import { jakartaDateKey } from "@/lib/booking-state";
 import {
    effectiveStart,
    getJakartaNow,
@@ -36,6 +37,40 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
       return { ok: false as const, message: "Status tidak valid" };
    }
 
+   const { data: currentBooking, error: bookingCheckError } = await supabase
+      .from("bookings")
+      .select("status, starts_at")
+      .eq("id", bookingId)
+      .maybeSingle();
+
+   if (bookingCheckError) {
+      return {
+         ok: false as const,
+         message: "Gagal memeriksa booking. Silakan coba lagi.",
+      };
+   }
+   if (!currentBooking) {
+      return { ok: false as const, message: "Booking tidak ditemukan." };
+   }
+
+   const nowMs = Date.now();
+   if (
+      parsed.data === "started" &&
+      jakartaDateKey(currentBooking.starts_at) !== getJakartaNow().date
+   ) {
+      return { ok: false as const, message: "Hanya booking hari ini yang bisa dimulai." };
+   }
+   if (
+      parsed.data === "done" &&
+      currentBooking.status === "confirmed" &&
+      new Date(currentBooking.starts_at).getTime() > nowMs
+   ) {
+      return {
+         ok: false as const,
+         message: "Jadwal booking ini belum tiba, belum bisa diselesaikan.",
+      };
+   }
+
    // Update ke database
    const { error } = await supabase
       .from("bookings")
@@ -55,7 +90,15 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
      .eq("id", bookingId)
      .single();
 
-  if (booking && !booking.customer_phone.startsWith("walkin-")) {
+  const isPastCancellation =
+     parsed.data === "cancelled" &&
+     new Date(currentBooking.starts_at).getTime() <= nowMs;
+
+  if (
+     booking &&
+     !booking.customer_phone.startsWith("walkin-") &&
+     !isPastCancellation
+  ) {
      const serviceName = Array.isArray(booking.services)
        ? booking.services[0]?.name ?? "Layanan"
        : (booking.services as { name?: string } | null)?.name ?? "Layanan";
