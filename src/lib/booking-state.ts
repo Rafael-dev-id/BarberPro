@@ -9,6 +9,7 @@ export type RowState =
   | "today"
   | "overdue"
   | "in_session"
+  | "overtime"
   | "stale_session"
   | "future_session"
   | "done"
@@ -17,6 +18,14 @@ export type RowState =
 
 export function jakartaDateKey(input: string | number | Date): string {
   return JAKARTA_DATE_FORMATTER.format(new Date(input));
+}
+
+// Dasar hitungan = ends_at; beralih ke started_at bila kolom itu ada.
+export function minutesPastEnd(endsAtIso: string, nowMs: number): number {
+  return Math.max(
+    0,
+    Math.floor((nowMs - new Date(endsAtIso).getTime()) / 60_000)
+  );
 }
 
 export function getRowState(
@@ -38,7 +47,12 @@ export function getRowState(
   }
 
   if (booking.status === "started") {
-    if (bookingDate === today) return "in_session";
+    if (bookingDate === today) {
+      return nowMs >
+        new Date(booking.ends_at).getTime() + OVERDUE_GRACE_MINUTES * 60_000
+        ? "overtime"
+        : "in_session";
+    }
     return bookingDate < today ? "stale_session" : "future_session";
   }
 

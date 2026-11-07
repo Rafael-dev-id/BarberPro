@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getJakartaNow } from "@/lib/slots";
 import { formatRupiah } from "@/lib/format";
+import { getRowState, minutesPastEnd } from "@/lib/booking-state";
 import { type Barber, type BookingRow } from "@/lib/types";
 
 interface CashierPanelProps {
@@ -62,6 +63,13 @@ export default function CashierPanel({
               booking.status === "started" &&
               booking.barbers?.name === barber.name
           );
+          const overtimeBookings =
+            nowMs === null
+              ? []
+              : startedBookings.filter(
+                  (booking) => getRowState(booking, nowMs) === "overtime"
+                );
+          const hasOvertime = overtimeBookings.length > 0;
           const nextBooking = todayBookings
             .filter(
               (booking) =>
@@ -80,14 +88,21 @@ export default function CashierPanel({
             <article
               key={barber.id}
               className={`rounded-2xl border p-4 ${
-                startedBookings.length > 0
+                hasOvertime
+                  ? "border-amber-300 bg-amber-50"
+                  : startedBookings.length > 0
                   ? "border-emerald-200 bg-emerald-50"
                   : "border-line bg-white"
               }`}
             >
               <h3 className="flex items-center gap-2 font-semibold text-ink">
                 {startedBookings.length > 0 && (
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" aria-hidden="true" />
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      hasOvertime ? "bg-amber-500" : "bg-emerald-600"
+                    }`}
+                    aria-hidden="true"
+                  />
                 )}
                 {barber.name}
               </h3>
@@ -109,6 +124,13 @@ export default function CashierPanel({
                         Mulai {formatJakartaTime(booking.starts_at)} · estimasi selesai{" "}
                         {formatJakartaTime(booking.ends_at)}
                       </p>
+                      {nowMs !== null &&
+                        getRowState(booking, nowMs) === "overtime" && (
+                          <p className="mt-2 text-sm font-semibold text-red-700">
+                            Lewat estimasi {minutesPastEnd(booking.ends_at, nowMs)} mnt.
+                            Tekan Selesai bila sudah selesai.
+                          </p>
+                        )}
                       {booking.customer_notes && (
                         <p className="mt-2 text-sm text-ink/70">
                           Catatan: {booking.customer_notes}

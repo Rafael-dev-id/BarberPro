@@ -2,9 +2,18 @@ import { CalendarCheck, Wallet, Hourglass, Crown } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import { type BookingRow } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
-import { jakartaDateKey } from "@/lib/booking-state";
+import {
+   jakartaDateKey,
+   OVERDUE_GRACE_MINUTES,
+} from "@/lib/booking-state";
 
-export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
+export default function AdminStats({
+   bookings,
+   nowMs,
+}: {
+   bookings: BookingRow[];
+   nowMs?: number | null;
+}) {
    const all = bookings ?? [];
    
    // ---------- STATISTIK ----------
@@ -30,6 +39,21 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
    const staleStartedCount = all.filter(
       (b) => b.status === "started" && jakartaDateKey(b.starts_at) < today
    ).length;
+   const overtimeCount =
+      nowMs === null || nowMs === undefined
+         ? 0
+         : startedToday.filter(
+              (b) =>
+                 nowMs >
+                 new Date(b.ends_at).getTime() +
+                    OVERDUE_GRACE_MINUTES * 60_000
+           ).length;
+   const startedSub = [
+      overtimeCount > 0 ? `${overtimeCount} lewat estimasi` : null,
+      staleStartedCount > 0 ? `${staleStartedCount} belum ditutup` : null,
+   ]
+      .filter((part): part is string => part !== null)
+      .join(", ");
 
    // Barber tersibuk (semua waktu, booking tidak batal)
    const counts = new Map<string, number>();
@@ -70,11 +94,7 @@ export default function AdminStats({ bookings }: { bookings: BookingRow[] }) {
            <StatCard
              label="Sedang Dikerjakan"
              value={String(startedToday.length)}
-             sub={
-               staleStartedCount > 0
-                  ? `${staleStartedCount} belum ditutup`
-                  : undefined
-             }
+             sub={startedSub || undefined}
              icon={<Hourglass size={18} />}
            />
            <StatCard
