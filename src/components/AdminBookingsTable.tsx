@@ -210,10 +210,11 @@ export default function AdminBookingsTable({
 
   function resolveStartClearance(allowed: boolean) {
     const resolve = startClearanceResolver.current;
+    if (!resolve) return;
     startClearanceResolver.current = null;
     setStartClearance(null);
     setStartClearanceBusy(false);
-    resolve?.(allowed);
+    resolve(allowed);
   }
 
   function requestStartClearance(
@@ -503,6 +504,7 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
+          onBeforeStart={requestStartClearance}
           onSuccess={(message) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
