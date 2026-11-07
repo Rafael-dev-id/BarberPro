@@ -6,6 +6,7 @@ import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
 import {
+  findRunningSessions,
   getRowState,
   jakartaDateKey,
   minutesPastEnd,
@@ -62,6 +63,13 @@ function formatBookingDateTime(iso: string): string {
   return `${formatBookingDateLabel(date)} · ${jakartaTimeFormatter.format(date)}`;
 }
 
+type StartClearance = {
+  barberName: string;
+  newCustomerLabel: string;
+  sessions: BookingRow[];
+  nowMs: number;
+};
+
 export default function AdminBookingsTable({
   initialBookings,
   services,
@@ -94,6 +102,9 @@ export default function AdminBookingsTable({
     status: "done" | "cancelled";
   } | null>(null);
   const [actionError, setActionError] = useState("");
+  const [startClearance, setStartClearance] = useState<StartClearance | null>(null);
+  const [startClearanceBusy, setStartClearanceBusy] = useState(false);
+  const startClearanceResolver = useRef<((allowed: boolean) => void) | null>(null);
 
   async function reload() {
     const supabase = createSupabaseBrowserClient();
@@ -170,6 +181,14 @@ export default function AdminBookingsTable({
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      startClearanceResolver.current?.(false);
+      startClearanceResolver.current = null;
+    },
+    []
+  );
+
   async function applyStatus(bookingId: number, newStatus: string): Promise<boolean> {
     setBusyId(bookingId);
     setActionError("");
@@ -189,9 +208,86 @@ export default function AdminBookingsTable({
     }
   }
 
+  function resolveStartClearance(allowed: boolean) {
+    const resolve = startClearanceResolver.current;
+    startClearanceResolver.current = null;
+    setStartClearance(null);
+    setStartClearanceBusy(false);
+    resolve?.(allowed);
+  }
+
+  function requestStartClearance(
+    barberId: number,
+    newCustomerLabel: string
+  ): Promise<boolean> {
+    const currentTime = nowMs ?? Date.now();
+    const sessions = findRunningSessions(
+      bookings,
+      (booking) => booking.barber_id === barberId,
+      currentTime
+    );
+    if (sessions.length === 0) return Promise.resolve(true);
+
+    const barberName =
+      barbers.find((barber) => barber.id === barberId)?.name ??
+      sessions[0].barbers?.name ??
+      "Kapster";
+
+    return new Promise((resolve) => {
+      startClearanceResolver.current = resolve;
+      setStartClearance({
+        barberName,
+        newCustomerLabel,
+        sessions,
+        nowMs: currentTime,
+      });
+    });
+  }
+
+  async function finishRunningSessionsThenStart() {
+    if (!startClearance || startClearanceBusy) return;
+    setStartClearanceBusy(true);
+    let allowed = true;
+    let errorMessage = "";
+
+    try {
+      for (const session of startClearance.sessions) {
+        const result = await updateBookingStatus(session.id, "done");
+        if (!result.ok) {
+          allowed = false;
+          errorMessage = result.message;
+          break;
+        }
+      }
+    } catch {
+      allowed = false;
+      errorMessage = "Gagal terhubung. Coba lagi.";
+    }
+
+    try {
+      await reload();
+    } catch {
+      allowed = false;
+      errorMessage = "Gagal terhubung. Coba lagi.";
+    }
+
+    if (errorMessage) setActionError(errorMessage);
+    resolveStartClearance(allowed);
+  }
+
   function handleStatus(bookingId: number, newStatus: string) {
     if (newStatus === "done" || newStatus === "cancelled") {
       setPendingAction({ id: bookingId, status: newStatus });
+      return;
+    }
+    if (newStatus === "started") {
+      const booking = bookings.find((item) => item.id === bookingId);
+      if (!booking) return;
+      void requestStartClearance(booking.barber_id, booking.customer_name).then(
+        (allowed) => {
+          if (allowed) void applyStatus(bookingId, newStatus);
+        }
+      );
       return;
     }
     void applyStatus(bookingId, newStatus);
@@ -312,6 +408,28 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
+  const startClearanceWarnings =
+    startClearance?.sessions.map((session) => {
+      const state = getRowState(session, startClearance.nowMs);
+      if (state === "overtime") {
+        return `${session.customer_name}: lewat estimasi ${minutesPastEnd(
+          session.ends_at,
+          startClearance.nowMs
+        )} mnt`;
+      }
+      if (state === "in_session") {
+        return `${session.customer_name}: masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
+          new Date(session.ends_at)
+        )})`;
+      }
+      return `${session.customer_name}: belum ditutup sejak ${formatBookingDateLabel(
+        session.starts_at
+      )}`;
+    }) ?? [];
+  const startClearanceHasWa =
+    startClearance?.sessions.some(
+      (session) => !session.customer_phone.startsWith("walkin-")
+    ) ?? false;
 
   useEffect(() => {
      const timer = setTimeout(() => {
@@ -713,6 +831,49 @@ export default function AdminBookingsTable({
         onCancel={() => {
           if (busyId !== pendingAction?.id) setPendingAction(null);
         }}
+      />
+      <ConfirmDialog
+        open={startClearance !== null}
+        tone="warning"
+        title="Kapster masih punya sesi berjalan"
+        details={
+          startClearance
+            ? [
+                { label: "Kapster", value: startClearance.barberName },
+                {
+                  label: "Pelanggan baru",
+                  value: startClearance.newCustomerLabel,
+                },
+                ...startClearance.sessions.map((session) => ({
+                  label: "Sesi berjalan",
+                  value: `${session.customer_name} · mulai ${jakartaTimeFormatter.format(
+                    new Date(session.starts_at)
+                  )}`,
+                })),
+              ]
+            : []
+        }
+        warnings={startClearanceWarnings}
+        note={
+          startClearance
+            ? `Pilih 'Tetap mulai' bila kapster memang mengerjakan dua pelanggan sekaligus.${
+                startClearanceHasWa
+                  ? " Pelanggan yang sesinya diselesaikan akan dikabari lewat WhatsApp."
+                  : ""
+              }`
+            : undefined
+        }
+        confirmLabel={
+          startClearance?.sessions.length === 1
+            ? `Selesaikan ${startClearance.sessions[0].customer_name} lalu mulai`
+            : `Selesaikan ${startClearance?.sessions.length ?? 0} sesi lalu mulai`
+        }
+        secondaryLabel="Tetap mulai"
+        cancelLabel="Batal"
+        busy={startClearanceBusy}
+        onConfirm={() => void finishRunningSessionsThenStart()}
+        onSecondary={() => resolveStartClearance(true)}
+        onCancel={() => resolveStartClearance(false)}
       />
     </>
   );

@@ -103,8 +103,8 @@ export default function ConfirmDialog({
           {title}
         </h2>
         <dl className="mt-4 space-y-2 rounded-xl bg-cream p-4 text-sm">
-          {details.map((detail) => (
-            <div key={detail.label} className="flex justify-between gap-4">
+          {details.map((detail, index) => (
+            <div key={`${detail.label}-${index}`} className="flex justify-between gap-4">
               <dt className="text-ink/70">{detail.label}</dt>
               <dd className="text-right font-semibold">{detail.value}</dd>
             </div>
