@@ -30,6 +30,7 @@ export interface WorkingHour {
 // Diekspor supaya halaman admin bisa memakai tipe yang sama.
 export type BookingRow = {
   id: number;
+  barber_id: number;
   customer_name: string;
   customer_phone: string;
   starts_at: string;
