@@ -106,6 +106,11 @@ export default function CashierPanel({
                 )}
                 {barber.name}
               </h3>
+              {startedBookings.length > 1 && (
+                <p className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                  {startedBookings.length} sesi berjalan bersamaan
+                </p>
+              )}
               {startedBookings.length > 0 ? (
                 <div className="mt-3 space-y-3">
                   {startedBookings.map((booking) => (

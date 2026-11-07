@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface ConfirmDialogProps {
   open: boolean;
-  tone: "success" | "danger";
+  tone: "success" | "danger" | "warning";
   title: string;
   details: { label: string; value: string }[];
   warnings?: string[];
   note?: string;
   confirmLabel: string;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   cancelLabel?: string;
   busy: boolean;
   onConfirm: () => void;
@@ -25,11 +27,17 @@ export default function ConfirmDialog({
   warnings,
   note,
   confirmLabel,
+  secondaryLabel,
+  onSecondary,
   cancelLabel = "Batal",
   busy,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const id = useId();
+  const titleId = `${id}-title`;
+  const warningsId = `${id}-warnings`;
+  const noteId = `${id}-note`;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -52,12 +60,12 @@ export default function ConfirmDialog({
 
   const Icon = tone === "success" ? CheckCircle2 : AlertTriangle;
   const confirmClass =
-    tone === "success"
-      ? "bg-emerald-600 hover:bg-emerald-700"
-      : "bg-red-600 hover:bg-red-700";
+    tone === "danger"
+      ? "bg-red-600 hover:bg-red-700"
+      : "bg-emerald-600 hover:bg-emerald-700";
   const describedBy = [
-    warnings?.length ? "confirm-dialog-warnings" : null,
-    note ? "confirm-dialog-note" : null,
+    warnings?.length ? warningsId : null,
+    note ? noteId : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -73,26 +81,30 @@ export default function ConfirmDialog({
       onClick={(event) => {
         if (event.target === event.currentTarget && !busy) onCancel();
       }}
-      aria-labelledby="confirm-dialog-title"
+      aria-labelledby={titleId}
       aria-describedby={describedBy || undefined}
     >
       <div className="rounded-2xl bg-white p-6 shadow-2xl">
         <div
           className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${
-            tone === "success" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+            tone === "success"
+              ? "bg-emerald-50 text-emerald-700"
+              : tone === "warning"
+                ? "bg-amber-100 text-amber-600"
+                : "bg-red-50 text-red-700"
           }`}
         >
           <Icon size={26} aria-hidden="true" />
         </div>
         <h2
-          id="confirm-dialog-title"
+          id={titleId}
           className="mt-4 text-center font-display text-xl font-semibold"
         >
           {title}
         </h2>
         <dl className="mt-4 space-y-2 rounded-xl bg-cream p-4 text-sm">
-          {details.map((detail) => (
-            <div key={detail.label} className="flex justify-between gap-4">
+          {details.map((detail, index) => (
+            <div key={`${detail.label}-${index}`} className="flex justify-between gap-4">
               <dt className="text-ink/70">{detail.label}</dt>
               <dd className="text-right font-semibold">{detail.value}</dd>
             </div>
@@ -100,7 +112,7 @@ export default function ConfirmDialog({
         </dl>
         {warnings && warnings.length > 0 && (
           <ul
-            id="confirm-dialog-warnings"
+            id={warningsId}
             className="mt-4 space-y-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"
           >
             {warnings.map((warning) => (
@@ -116,28 +128,58 @@ export default function ConfirmDialog({
           </ul>
         )}
         {note && (
-          <p id="confirm-dialog-note" className="mt-4 text-sm text-ink/70">
+          <p id={noteId} className="mt-4 text-sm text-ink/70">
             {note}
           </p>
         )}
-        <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse">
+        <div
+          className={
+            secondaryLabel
+              ? "mt-6 flex flex-col gap-2"
+              : "mt-6 flex flex-col gap-2 sm:flex-row-reverse"
+          }
+        >
           <button
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className={`min-h-11 flex-1 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60 ${confirmClass}`}
+            className={`min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60 ${confirmClass} ${
+              secondaryLabel ? "w-full" : "flex-1"
+            }`}
           >
             {busy ? "Memproses…" : confirmLabel}
           </button>
-          <button
-            ref={cancelRef}
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="min-h-11 flex-1 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:opacity-60"
-          >
-            {cancelLabel}
-          </button>
+          {secondaryLabel ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onSecondary}
+                className="min-h-11 flex-1 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:opacity-60"
+              >
+                {secondaryLabel}
+              </button>
+              <button
+                ref={cancelRef}
+                type="button"
+                disabled={busy}
+                onClick={onCancel}
+                className="min-h-11 flex-1 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:opacity-60"
+              >
+                {cancelLabel}
+              </button>
+            </div>
+          ) : (
+            <button
+              ref={cancelRef}
+              type="button"
+              disabled={busy}
+              onClick={onCancel}
+              className="min-h-11 flex-1 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:opacity-60"
+            >
+              {cancelLabel}
+            </button>
+          )}
         </div>
       </div>
     </dialog>

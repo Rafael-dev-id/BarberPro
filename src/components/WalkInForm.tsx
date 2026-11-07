@@ -17,6 +17,7 @@ interface WalkInFormProps {
   services: Service[];
   barbers: Barber[];
   workingHours: WorkingHour[];
+  onBeforeStart?: (barberId: number, customerName: string) => Promise<boolean>;
   onSuccess: (message: string) => void;
 }
 
@@ -39,6 +40,7 @@ export default function WalkInForm({
   services,
   barbers,
   workingHours,
+  onBeforeStart,
   onSuccess,
 }: WalkInFormProps) {
   const today = new Date().toLocaleDateString("en-CA", {
@@ -118,6 +120,14 @@ export default function WalkInForm({
     setSubmitting(true);
     setErrorMessage("");
     try {
+      if (
+        startNow &&
+        onBeforeStart &&
+        !(await onBeforeStart(selectedBarber.id, customerName))
+      ) {
+        return;
+      }
+
       const result = await createWalkInBooking({
         customerName,
         customerPhone: customerPhone.trim() || undefined,

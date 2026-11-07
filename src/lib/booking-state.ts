@@ -28,6 +28,28 @@ export function minutesPastEnd(endsAtIso: string, nowMs: number): number {
   );
 }
 
+export function findRunningSessions<
+  T extends { id: number; status: string; starts_at: string; ends_at: string },
+>(
+  bookings: T[],
+  isSameBarber: (booking: T) => boolean,
+  nowMs: number
+): T[] {
+  return bookings
+    .filter(
+      (booking) =>
+        booking.status === "started" &&
+        isSameBarber(booking) &&
+        ["in_session", "overtime", "stale_session"].includes(
+          getRowState(booking, nowMs)
+        )
+    )
+    .sort(
+      (left, right) =>
+        new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime()
+    );
+}
+
 export function getRowState(
   booking: { status: string; starts_at: string; ends_at: string },
   nowMs: number
