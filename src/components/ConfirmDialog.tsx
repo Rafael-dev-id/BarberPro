@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -8,9 +9,11 @@ interface ConfirmDialogProps {
   tone: "success" | "danger" | "warning";
   title: string;
   details: { label: string; value: string }[];
+  children?: ReactNode;
   warnings?: string[];
   note?: string;
   confirmLabel: string;
+  confirmDisabled?: boolean;
   secondaryLabel?: string;
   onSecondary?: () => void;
   cancelLabel?: string;
@@ -24,9 +27,11 @@ export default function ConfirmDialog({
   tone,
   title,
   details,
+  children,
   warnings,
   note,
   confirmLabel,
+  confirmDisabled = false,
   secondaryLabel,
   onSecondary,
   cancelLabel = "Batal",
@@ -110,6 +115,7 @@ export default function ConfirmDialog({
             </div>
           ))}
         </dl>
+        {children}
         {warnings && warnings.length > 0 && (
           <ul
             id={warningsId}
@@ -141,7 +147,7 @@ export default function ConfirmDialog({
         >
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             onClick={onConfirm}
             className={`min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60 ${confirmClass} ${
               secondaryLabel ? "w-full" : "flex-1"

@@ -68,6 +68,7 @@ type StartClearance = {
   newCustomerLabel: string;
   sessions: BookingRow[];
   nowMs: number;
+  selectedIds: number[];
 };
 
 export default function AdminBookingsTable({
@@ -159,6 +160,7 @@ export default function AdminBookingsTable({
         }
       )
       .subscribe((status: string) => {
+        if (status !== "SUBSCRIBED") connectivityLostRef.current = true;
         liveStatusRef.current = status;
         setLive(status);
       });
@@ -235,41 +237,66 @@ export default function AdminBookingsTable({
       "Kapster";
 
     return new Promise((resolve) => {
+      startClearanceResolver.current?.(false);
       startClearanceResolver.current = resolve;
       setStartClearance({
         barberName,
         newCustomerLabel,
         sessions,
         nowMs: currentTime,
+        selectedIds: sessions
+          .filter((session) => {
+            const state = getRowState(session, currentTime);
+            return state === "overtime" || state === "stale_session";
+          })
+          .map((session) => session.id),
       });
     });
   }
 
   async function finishRunningSessionsThenStart() {
-    if (!startClearance || startClearanceBusy) return;
+    if (
+      !startClearance ||
+      startClearanceBusy ||
+      startClearance.selectedIds.length === 0
+    ) {
+      return;
+    }
     setStartClearanceBusy(true);
+    setActionError("");
     let allowed = true;
     let errorMessage = "";
+    let completedCount = 0;
+    const sessionsToFinish = startClearance.sessions.filter((session) =>
+      startClearance.selectedIds.includes(session.id)
+    );
 
     try {
-      for (const session of startClearance.sessions) {
+      for (const session of sessionsToFinish) {
         const result = await updateBookingStatus(session.id, "done");
         if (!result.ok) {
           allowed = false;
-          errorMessage = result.message;
+          errorMessage =
+            completedCount > 0
+              ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${result.message}. Sesi baru belum dimulai.`
+              : result.message;
           break;
         }
+        completedCount += 1;
       }
     } catch {
       allowed = false;
-      errorMessage = "Gagal terhubung. Coba lagi.";
+      const error = "Gagal terhubung. Coba lagi.";
+      errorMessage =
+        completedCount > 0
+          ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${error}. Sesi baru belum dimulai.`
+          : error;
     }
 
-    try {
-      await reload();
-    } catch {
+    const reloaded = await reload();
+    if (!reloaded) {
       allowed = false;
-      errorMessage = "Gagal terhubung. Coba lagi.";
+      if (!errorMessage) errorMessage = "Gagal terhubung. Coba lagi.";
     }
 
     if (errorMessage) setActionError(errorMessage);
@@ -409,28 +436,16 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
-  const startClearanceWarnings =
-    startClearance?.sessions.map((session) => {
-      const state = getRowState(session, startClearance.nowMs);
-      if (state === "overtime") {
-        return `${session.customer_name}: lewat estimasi ${minutesPastEnd(
-          session.ends_at,
-          startClearance.nowMs
-        )} mnt`;
-      }
-      if (state === "in_session") {
-        return `${session.customer_name}: masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
-          new Date(session.ends_at)
-        )})`;
-      }
-      return `${session.customer_name}: belum ditutup sejak ${formatBookingDateLabel(
-        session.starts_at
-      )}`;
-    }) ?? [];
   const startClearanceHasWa =
     startClearance?.sessions.some(
-      (session) => !session.customer_phone.startsWith("walkin-")
+      (session) =>
+        startClearance.selectedIds.includes(session.id) &&
+        !session.customer_phone.startsWith("walkin-")
     ) ?? false;
+  const selectedStartSessions =
+    startClearance?.sessions.filter((session) =>
+      startClearance.selectedIds.includes(session.id)
+    ) ?? [];
 
   useEffect(() => {
      const timer = setTimeout(() => {
@@ -846,16 +861,74 @@ export default function AdminBookingsTable({
                   label: "Pelanggan baru",
                   value: startClearance.newCustomerLabel,
                 },
-                ...startClearance.sessions.map((session) => ({
-                  label: "Sesi berjalan",
-                  value: `${session.customer_name} · mulai ${jakartaTimeFormatter.format(
-                    new Date(session.starts_at)
-                  )}`,
-                })),
               ]
             : []
         }
-        warnings={startClearanceWarnings}
+        warnings={undefined}
+        children={
+          startClearance && (
+            <div className="mt-4 space-y-2">
+              {startClearance.sessions.map((session) => {
+                const state = getRowState(session, startClearance.nowMs);
+                const description =
+                  state === "overtime"
+                    ? `lewat estimasi ${minutesPastEnd(
+                        session.ends_at,
+                        startClearance.nowMs
+                      )} mnt`
+                    : state === "in_session"
+                      ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
+                          new Date(session.ends_at)
+                        )})`
+                      : state === "future_session"
+                        ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
+                            new Date(session.starts_at)
+                          )}`
+                        : `belum ditutup sejak ${formatBookingDateLabel(
+                            session.starts_at
+                          )}`;
+                return (
+                  <label
+                    key={session.id}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={startClearance.selectedIds.includes(session.id)}
+                      disabled={startClearanceBusy}
+                      onChange={(event) => {
+                        setStartClearance((current) =>
+                          current
+                            ? {
+                                ...current,
+                                selectedIds: event.target.checked
+                                  ? [...current.selectedIds, session.id]
+                                  : current.selectedIds.filter(
+                                      (id) => id !== session.id
+                                    ),
+                              }
+                            : current
+                        );
+                      }}
+                      className="h-4 w-4 accent-amber-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-ink">
+                        {session.customer_name} · mulai{" "}
+                        {jakartaTimeFormatter.format(
+                          new Date(session.starts_at)
+                        )}
+                      </span>
+                      <span className="block text-xs text-ink/70">
+                        {description}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )
+        }
         note={
           startClearance
             ? `Pilih 'Tetap mulai' bila kapster memang mengerjakan dua pelanggan sekaligus.${
@@ -866,10 +939,13 @@ export default function AdminBookingsTable({
             : undefined
         }
         confirmLabel={
-          startClearance?.sessions.length === 1
-            ? `Selesaikan ${startClearance.sessions[0].customer_name} lalu mulai`
-            : `Selesaikan ${startClearance?.sessions.length ?? 0} sesi lalu mulai`
+          selectedStartSessions.length === 0
+            ? "Pilih sesi yang diselesaikan"
+            : selectedStartSessions.length === 1
+              ? `Selesaikan ${selectedStartSessions[0].customer_name} lalu mulai`
+              : `Selesaikan ${selectedStartSessions.length} sesi lalu mulai`
         }
+        confirmDisabled={selectedStartSessions.length === 0}
         secondaryLabel="Tetap mulai"
         cancelLabel="Batal"
         busy={startClearanceBusy}
