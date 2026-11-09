@@ -40,7 +40,7 @@ export function findRunningSessions<
       (booking) =>
         booking.status === "started" &&
         isSameBarber(booking) &&
-        ["in_session", "overtime", "stale_session"].includes(
+        ["in_session", "overtime", "stale_session", "future_session"].includes(
           getRowState(booking, nowMs)
         )
     )
