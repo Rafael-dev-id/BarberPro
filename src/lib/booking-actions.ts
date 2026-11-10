@@ -270,16 +270,18 @@ export async function createBooking(input: BookingInput) {
       return { ok: false as  const, message: "Layanan atau barber tidak ditemukan." };
    }
 
-   const { error } = await supabase.from("bookings").insert({
-      service_id: data.serviceId,
-      barber_id: barber.id,
-      customer_name: data.customerName,
-      customer_phone: normalizedPhone,
-      customer_notes: data.customerNotes === "" ? null : data.customerNotes,
-      starts_at: toIso(data.date, data.slotMinutes),
-      ends_at: toIso(data.date, effectiveSlotEnd),
-      status: "confirmed",
-   });
+   const { data: publicToken, error } = await supabase.rpc(
+      "insert_booking_returning_token",
+      {
+         p_service_id: data.serviceId,
+         p_barber_id: barber.id,
+         p_customer_name: data.customerName,
+         p_customer_phone: normalizedPhone,
+         p_customer_notes: data.customerNotes === "" ? null : data.customerNotes,
+         p_starts_at: toIso(data.date, data.slotMinutes),
+         p_ends_at: toIso(data.date, effectiveSlotEnd),
+      }
+   );
 
    if (error) {
       if (error.code === "23P01") { 
@@ -297,7 +299,7 @@ export async function createBooking(input: BookingInput) {
             message: "Kamu sudah punya booking dengan nomor ini. Batalkan booking atau pakai nomor lain."
          }
       }
-      
+
       if (error.code === "42501") { 
          // RLS menolak → tidak ada policy yang mengizinkan
          return {
@@ -307,6 +309,13 @@ export async function createBooking(input: BookingInput) {
       }
 
       return { ok: false as const, message: "Gagal menyimpan booking. Coba lagi nanti" };
+   }
+
+   if (!publicToken) {
+      return {
+         ok: false as const,
+         message: "Booking tersimpan, tetapi tautan pengelolaan belum tersedia. Hubungi barbershop.",
+      };
    }
 
    const [adminWa, custWa] = await Promise.allSettled([
@@ -348,6 +357,8 @@ export async function createBooking(input: BookingInput) {
       ok: true as const,
       message,
       summary: {
+         publicToken,
+         code: publicToken.replace(/-/g, "").slice(0, 4).toUpperCase(),
          serviceName: service.name,
          barberName: barber.name,
          dateLabel: formatTanggalPanjang(data.date),

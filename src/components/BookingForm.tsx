@@ -27,6 +27,8 @@ interface FormErrors {
 
 type SubmitStatus = "idle" | "loading" | "success" | "error";
 type BookingSummary = {
+  publicToken: string;
+  code: string;
   serviceName: string;
   barberName: string;
   dateLabel: string;
@@ -53,6 +55,41 @@ export default function BookingForm({
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [serverMessage, setServerMessage] = useState("");
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+
+  function getManagementUrl(token: string): string {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    return new URL(`/ringkasan/${token}`, siteUrl).toString();
+  }
+
+  async function copyManagementUrl(token: string) {
+    const url = getManagementUrl(token);
+    setCopied(false);
+    setCopyError("");
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      try {
+        document.body.appendChild(textarea);
+        textarea.select();
+        if (!document.execCommand("copy")) {
+          setCopyError("Tautan tidak dapat disalin. Salin alamat secara manual.");
+          return;
+        }
+      } catch {
+        setCopyError("Tautan tidak dapat disalin. Salin alamat secara manual.");
+        return;
+      } finally {
+        textarea.remove();
+      }
+    }
+    setCopied(true);
+  }
 
   function clearError(field: keyof FormErrors) {
     setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -149,6 +186,10 @@ export default function BookingForm({
            {bookingSummary && (
              <dl className="mt-3 space-y-1 rounded-xl bg-ink/5 p-4 text-sm">
                <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Kode booking</dt>
+                 <dd className="text-right font-semibold tracking-wider">{bookingSummary.code}</dd>
+               </div>
+               <div className="flex justify-between gap-3">
                  <dt className="text-ink/60">Layanan</dt>
                  <dd className="text-right font-medium">{bookingSummary.serviceName}</dd>
                </div>
@@ -169,6 +210,26 @@ export default function BookingForm({
                  <dd className="text-right font-medium">{formatRupiah(bookingSummary.price)}</dd>
                </div>
              </dl>
+           )}
+           {bookingSummary && (
+             <div className="mt-4 grid gap-2">
+               <Link
+                 href={`/ringkasan/${bookingSummary.publicToken}`}
+                 className="btn-gold min-h-11 w-full text-center"
+               >
+                 Kelola booking
+               </Link>
+               <button
+                 type="button"
+                 onClick={() => void copyManagementUrl(bookingSummary.publicToken)}
+                 className="min-h-11 w-full rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream"
+               >
+                 {copied ? "Tersalin" : "Salin tautan"}
+               </button>
+               {copyError && (
+                 <p role="status" className="text-sm text-red-700">{copyError}</p>
+               )}
+             </div>
            )}
            <div className="mt-3 rounded-xl bg-emerald-50 p-5 text-sm text-emerald-700 whitespace-pre-line lh-3 text-base/7 tracking-wide">
               {serverMessage}

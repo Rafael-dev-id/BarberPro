@@ -20,7 +20,7 @@ export function jakartaDateKey(input: string | number | Date): string {
   return JAKARTA_DATE_FORMATTER.format(new Date(input));
 }
 
-// Dasar hitungan = ends_at; beralih ke started_at bila kolom itu ada.
+// Keep the stored slot range intact and estimate the session from its real start.
 export function minutesPastEnd(endsAtIso: string, nowMs: number): number {
   return Math.max(
     0,
