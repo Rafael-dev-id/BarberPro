@@ -244,7 +244,7 @@ export default function BookingForm({
                href={`/ringkasan/${bookingSummary.publicToken}`}
                className="btn-gold mt-4 block min-h-11 w-full text-center"
              >
-               Kelola booking
+               Lihat booking
              </Link>
            )}
            <p className="mt-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
