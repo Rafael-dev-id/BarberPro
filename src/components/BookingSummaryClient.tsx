@@ -28,10 +28,12 @@ export default function BookingSummaryClient({
   token,
   summary,
   statusLabel,
+  tooLateContactUrl,
 }: {
   token: string;
   summary: PublicBookingSummary;
   statusLabel: string;
+  tooLateContactUrl: string | null;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<"cancel" | "reschedule" | null>(null);
@@ -142,6 +144,12 @@ export default function BookingSummaryClient({
           <SummaryRow label="Status" value={statusLabel} />
         </dl>
 
+        {isConfirmed && (
+          <p className="mt-4 text-sm text-ink/70">
+            Datang 5-10 menit sebelum jam sesi.
+          </p>
+        )}
+
         {notice && (
           <p
             role={notice.kind === "success" ? "status" : "alert"}
@@ -156,9 +164,32 @@ export default function BookingSummaryClient({
             {blockReason}
           </p>
         )}
+        {isTooLate && tooLateContactUrl && (
+          <a
+            href={tooLateContactUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-gold mt-4 flex min-h-11 w-full items-center justify-center text-center"
+          >
+            Hubungi barbershop via WhatsApp
+          </a>
+        )}
+        {isTooLate && !tooLateContactUrl && (
+          <div className="mt-4">
+            <p className="text-sm text-ink/70">
+              Silakan hubungi barbershop langsung.
+            </p>
+            <Link
+              href="/"
+              className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-ink/70 underline underline-offset-2"
+            >
+              Ke beranda
+            </Link>
+          </div>
+        )}
 
-        <div className="mt-5 grid gap-2">
-          {summary.can_cancel ? (
+        {summary.can_cancel && (
+          <div className="mt-5 grid gap-2">
             <>
               <button
                 type="button"
@@ -183,15 +214,16 @@ export default function BookingSummaryClient({
                 Kembali ke booking
               </Link>
             </>
-          ) : !isConfirmed ? (
-            <Link
-              href="/booking"
-              className="btn-gold min-h-11 w-full text-center"
-            >
-              Buat booking baru
-            </Link>
-          ) : null}
-        </div>
+          </div>
+        )}
+        {!isConfirmed && (
+          <Link
+            href="/booking"
+            className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-ink/70 underline underline-offset-2"
+          >
+            Buat booking baru
+          </Link>
+        )}
       </section>
 
       <dialog

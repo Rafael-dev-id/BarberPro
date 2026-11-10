@@ -7,6 +7,7 @@ import {
 } from "@/lib/public-booking";
 import BookingSummaryClient from "@/components/BookingSummaryClient";
 import { isNetworkError } from "@/lib/admin-auth";
+import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -51,13 +52,44 @@ export default async function BookingSummaryPage({
   }
 
   const summary = summaryData as PublicBookingSummary;
+  const tooLateContactUrl =
+    summary.status === "confirmed" &&
+    summary.cancel_block_reason === "too_late"
+      ? getTooLateContactUrl(summary)
+      : null;
   return (
     <BookingSummaryClient
       token={token}
       summary={summary}
       statusLabel={getPublicBookingStatus(summary.status, summary.cancelled_by)}
+      tooLateContactUrl={tooLateContactUrl}
     />
   );
+}
+
+function getTooLateContactUrl(summary: PublicBookingSummary): string | null {
+  const configuredNumber = process.env.ADMIN_WHATSAPP_NUMBER;
+  if (!configuredNumber || !isValidIndonesianPhone(configuredNumber)) return null;
+
+  const normalizedNumber = normalizePhone(configuredNumber).replace(/\D/g, "");
+  if (!/^62\d{8,11}$/.test(normalizedNumber)) return null;
+
+  const startsAt = new Date(summary.starts_at);
+  const date = new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(startsAt);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(startsAt);
+  const text = `Halo, saya ${summary.customer_name}, kode booking ${summary.code}. Saya ingin mengubah atau membatalkan booking ${date} jam ${time}.`;
+
+  return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent(text)}`;
 }
 
 function BookingSummaryMessage({
