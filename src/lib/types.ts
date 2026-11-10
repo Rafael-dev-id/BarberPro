@@ -35,6 +35,9 @@ export type BookingRow = {
   customer_phone: string;
   starts_at: string;
   ends_at: string;
+  public_token: string;
+  cancelled_by: "customer" | "admin" | null;
+  started_at: string | null;
   customer_notes?: string | null;
   status: string;
   services: { name: string; price: number } | null;
