@@ -28,6 +28,24 @@ export function minutesPastEnd(endsAtIso: string, nowMs: number): number {
   );
 }
 
+export function getSessionTimes(booking: {
+  starts_at: string;
+  ends_at: string;
+  started_at?: string | null;
+}): { startedAt: string; estimatedEndAt: string } {
+  const startedAt = booking.started_at ?? booking.starts_at;
+  const durationMs =
+    new Date(booking.ends_at).getTime() -
+    new Date(booking.starts_at).getTime();
+
+  return {
+    startedAt,
+    estimatedEndAt: new Date(
+      new Date(startedAt).getTime() + durationMs
+    ).toISOString(),
+  };
+}
+
 export function findRunningSessions<
   T extends { id: number; status: string; starts_at: string; ends_at: string },
 >(
@@ -51,13 +69,20 @@ export function findRunningSessions<
 }
 
 export function getRowState(
-  booking: { status: string; starts_at: string; ends_at: string },
+  booking: {
+    status: string;
+    starts_at: string;
+    ends_at: string;
+    started_at?: string | null;
+  },
   nowMs: number
 ): RowState {
   if (booking.status === "done") return "done";
   if (booking.status === "cancelled") return "cancelled";
 
-  const bookingDate = jakartaDateKey(booking.starts_at);
+  const sessionTimes =
+    booking.status === "started" ? getSessionTimes(booking) : null;
+  const bookingDate = jakartaDateKey(sessionTimes?.startedAt ?? booking.starts_at);
   const today = jakartaDateKey(nowMs);
 
   if (booking.status === "confirmed") {
@@ -71,7 +96,8 @@ export function getRowState(
   if (booking.status === "started") {
     if (bookingDate === today) {
       return nowMs >
-        new Date(booking.ends_at).getTime() + OVERDUE_GRACE_MINUTES * 60_000
+        new Date(sessionTimes!.estimatedEndAt).getTime() +
+          OVERDUE_GRACE_MINUTES * 60_000
         ? "overtime"
         : "in_session";
     }

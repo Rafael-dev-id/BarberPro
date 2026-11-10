@@ -82,9 +82,17 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
    }
 
    // Update ke database
+   const updates: {
+      status: z.infer<typeof statusSchema>;
+      started_at?: string;
+      cancelled_by?: "admin";
+   } = { status: parsed.data };
+   if (parsed.data === "started") updates.started_at = new Date().toISOString();
+   if (parsed.data === "cancelled") updates.cancelled_by = "admin";
+
    const { error } = await supabase
       .from("bookings")
-      .update({ status: parsed.data })
+      .update(updates)
       .eq("id", bookingId);
 
      if (error) {

@@ -8,6 +8,7 @@ import { isTooCloseToCancel } from "@/lib/slots";
 import {
   findRunningSessions,
   getRowState,
+  getSessionTimes,
   jakartaDateKey,
   minutesPastEnd,
 } from "@/lib/booking-state";
@@ -662,10 +663,18 @@ export default function AdminBookingsTable({
               rows.map((b) => {
                 const rowState =
                   nowMs === null ? "other" : getRowState(b, nowMs);
+                const sessionTimes =
+                  b.status === "started" ? getSessionTimes(b) : null;
                 return (
                 <tr key={b.id} className="border-b border-line">
                   <td className="py-3 pr-3">
-                    {formatBookingDateTime(b.starts_at)}
+                    {sessionTimes
+                      ? `${formatBookingDateLabel(sessionTimes.startedAt)} · mulai ${jakartaTimeFormatter.format(
+                          new Date(sessionTimes.startedAt)
+                        )} · selesai ${jakartaTimeFormatter.format(
+                          new Date(sessionTimes.estimatedEndAt)
+                        )}`
+                      : formatBookingDateTime(b.starts_at)}
                   </td>
                   <td className="py-3 pr-3">
                     {b.customer_name}
@@ -709,8 +718,11 @@ export default function AdminBookingsTable({
                     {rowState === "overtime" && nowMs !== null && (
                       <span
                         title={`Estimasi selesai ${jakartaTimeFormatter.format(
-                          new Date(b.ends_at)
-                        )} sudah lewat ${minutesPastEnd(b.ends_at, nowMs)} menit`}
+                          new Date(sessionTimes?.estimatedEndAt ?? b.ends_at)
+                        )} sudah lewat ${minutesPastEnd(
+                          sessionTimes?.estimatedEndAt ?? b.ends_at,
+                          nowMs
+                        )} menit`}
                         className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
                       >
                         Lewat estimasi
@@ -908,22 +920,23 @@ export default function AdminBookingsTable({
           <div className="mt-4 space-y-2">
             {startClearance.sessions.map((session) => {
               const state = getRowState(session, startClearance.nowMs);
+              const sessionTimes = getSessionTimes(session);
               const description =
                 state === "overtime"
                   ? `lewat estimasi ${minutesPastEnd(
-                      session.ends_at,
+                      sessionTimes.estimatedEndAt,
                       startClearance.nowMs
                     )} mnt`
                   : state === "in_session"
                     ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
-                        new Date(session.ends_at)
+                        new Date(sessionTimes.estimatedEndAt)
                       )})`
                     : state === "future_session"
                       ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
                           new Date(session.starts_at)
                         )}`
                       : `belum ditutup sejak ${formatBookingDateLabel(
-                          session.starts_at
+                          sessionTimes.startedAt
                         )}`;
               return (
                 <label
@@ -953,7 +966,13 @@ export default function AdminBookingsTable({
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-ink">
                       {session.customer_name} · mulai{" "}
-                      {jakartaTimeFormatter.format(new Date(session.starts_at))}
+                      {jakartaTimeFormatter.format(
+                        new Date(sessionTimes.startedAt)
+                      )}{" "}
+                      · selesai{" "}
+                      {jakartaTimeFormatter.format(
+                        new Date(sessionTimes.estimatedEndAt)
+                      )}
                     </span>
                     <span className="block text-xs text-ink/70">
                       {description}

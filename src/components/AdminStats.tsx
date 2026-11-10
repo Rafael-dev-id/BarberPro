@@ -3,8 +3,9 @@ import StatCard from "@/components/StatCard";
 import { type BookingRow } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import {
+   getRowState,
+   getSessionTimes,
    jakartaDateKey,
-   OVERDUE_GRACE_MINUTES,
 } from "@/lib/booking-state";
 
 export default function AdminStats({
@@ -34,19 +35,20 @@ export default function AdminStats({
    );
 
    const startedToday = all.filter(
-      (b) => b.status === "started" && jakartaDateKey(b.starts_at) === today
+      (b) =>
+         b.status === "started" &&
+         jakartaDateKey(getSessionTimes(b).startedAt) === today
    );
    const staleStartedCount = all.filter(
-      (b) => b.status === "started" && jakartaDateKey(b.starts_at) < today
+      (b) =>
+         b.status === "started" &&
+         jakartaDateKey(getSessionTimes(b).startedAt) < today
    ).length;
    const overtimeCount =
       nowMs === null || nowMs === undefined
          ? 0
          : startedToday.filter(
-              (b) =>
-                 nowMs >
-                 new Date(b.ends_at).getTime() +
-                    OVERDUE_GRACE_MINUTES * 60_000
+              (b) => getRowState(b, nowMs) === "overtime"
            ).length;
    const startedSub = [
       overtimeCount > 0 ? `${overtimeCount} lewat estimasi` : null,
