@@ -5,7 +5,11 @@ import {
   isNetworkError,
   NETWORK_ERROR_MESSAGE,
 } from "@/lib/admin-auth";
-import { UUID_PATTERN } from "@/lib/public-booking";
+import {
+  UUID_PATTERN,
+  type LastBookingSummary,
+  type PublicBookingSummary,
+} from "@/lib/public-booking";
 import { scheduleCustomerCancellationNotice } from "@/lib/booking-notifications";
 
 type CancelResult =
@@ -15,6 +19,47 @@ type CancelResult =
       ok: false;
       message: string;
     };
+
+export type LastBookingLookup =
+  | { kind: "valid"; booking: LastBookingSummary }
+  | { kind: "invalid" }
+  | { kind: "unavailable" };
+
+export async function getLastBookingSummary(
+  token: string
+): Promise<LastBookingLookup> {
+  if (!UUID_PATTERN.test(token)) return { kind: "invalid" };
+
+  try {
+    const { data, error } = await supabase.rpc("get_booking_summary", {
+      p_token: token,
+    });
+    if (error) {
+      return { kind: "unavailable" };
+    }
+    if (!data) return { kind: "invalid" };
+
+    const summary = data as PublicBookingSummary;
+    if (
+      summary.status !== "confirmed" ||
+      new Date(summary.starts_at).getTime() <= Date.now()
+    ) {
+      return { kind: "invalid" };
+    }
+
+    return {
+      kind: "valid",
+      booking: {
+        code: summary.code,
+        service_name: summary.service_name,
+        starts_at: summary.starts_at,
+        status: "confirmed",
+      },
+    };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
 
 export async function cancelBookingByToken(token: string): Promise<CancelResult> {
   if (!UUID_PATTERN.test(token)) {

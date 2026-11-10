@@ -12,6 +12,13 @@ export interface PublicBookingSummary {
   cancel_block_reason: BookingCancelBlockReason;
 }
 
+export interface LastBookingSummary {
+  code: string;
+  service_name: string;
+  starts_at: string;
+  status: "confirmed";
+}
+
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

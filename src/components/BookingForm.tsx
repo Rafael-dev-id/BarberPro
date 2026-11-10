@@ -16,8 +16,9 @@ interface BookingFormProps {
   date: string;
   dateLabel?: string;
   slotMinutes: number;
-  onBooked: () => void;
+  onBooked: (token: string) => void;
   onSlotConflict: () => void;
+  onStartAnother: () => void;
 }
 
 interface FormErrors {
@@ -47,6 +48,7 @@ export default function BookingForm({
   slotMinutes,
   onBooked,
   onSlotConflict,
+  onStartAnother,
 }: BookingFormProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -130,7 +132,14 @@ export default function BookingForm({
     setServerWarning(result.ok ? result.warning ?? "" : "");
     setBookingSummary(result.ok ? result.summary : null);
 
-    if (result.ok) onBooked();
+    if (result.ok) {
+      try {
+        localStorage.setItem("barberpro:last-booking", result.summary.publicToken);
+      } catch {
+        // Booking tetap berhasil bila penyimpanan browser tidak tersedia.
+      }
+      onBooked(result.summary.publicToken);
+    }
     else if (result.message === "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain.") {
       onSlotConflict();
     }
@@ -145,6 +154,9 @@ export default function BookingForm({
      setServerMessage("");
      setServerWarning("");
      setBookingSummary(null);
+     setCopied(false);
+     setCopyError("");
+     onStartAnother();
   }
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.

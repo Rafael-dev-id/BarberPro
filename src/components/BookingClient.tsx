@@ -13,7 +13,10 @@ import {
   minutesToTime,
 } from "@/lib/slots";
 import { getBookedSlots } from "@/lib/booking-actions";
+import { getLastBookingSummary } from "@/lib/booking-management-actions";
+import type { LastBookingSummary } from "@/lib/public-booking";
 import BookingForm from "@/components/BookingForm";
+import Link from "next/link";
 
 interface BookedRange {
   startMinutes: number;
@@ -102,6 +105,10 @@ export default function BookingClient({
     refreshKey: number;
   } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lastBookingRefresh, setLastBookingRefresh] = useState(0);
+  const [lastBooking, setLastBooking] = useState<LastBookingSummary | null>(null);
+  const [lastBookingToken, setLastBookingToken] = useState("");
+  const [bookingJustCompleted, setBookingJustCompleted] = useState(false);
   const [dateNote, setDateNote] = useState("");
   const [smartNote, setSmartNote] = useState<SmartDateNote | null>(null);
   const [sameDayOffer, setSameDayOffer] = useState<{
@@ -112,6 +119,59 @@ export default function BookingClient({
   const dateTouchedRef = useRef(false);
   const selectedBarberRef = useRef<number | null>(null);
   const initialProbe = useRef({ services, workingHours, selectedDate });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLastBooking() {
+      await Promise.resolve();
+      let token: string | null = null;
+      try {
+        token = localStorage.getItem("barberpro:last-booking");
+      } catch {
+        if (!cancelled) {
+          setLastBooking(null);
+          setLastBookingToken("");
+        }
+        return;
+      }
+
+      if (!token) {
+        if (!cancelled) {
+          setLastBooking(null);
+          setLastBookingToken("");
+        }
+        return;
+      }
+
+      const result = await getLastBookingSummary(token);
+      if (cancelled) return;
+      if (result.kind === "valid") {
+        setLastBooking(result.booking);
+        setLastBookingToken(token);
+      } else {
+        setLastBooking(null);
+        if (result.kind === "invalid") {
+          setLastBookingToken("");
+          try {
+            if (localStorage.getItem("barberpro:last-booking") === token) {
+              localStorage.removeItem("barberpro:last-booking");
+            }
+          } catch {
+            // Tidak mengganggu halaman booking bila storage tidak tersedia.
+          }
+        }
+      }
+    }
+
+    void loadLastBooking();
+    window.addEventListener("focus", loadLastBooking);
+    document.addEventListener("visibilitychange", loadLastBooking);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadLastBooking);
+      document.removeEventListener("visibilitychange", loadLastBooking);
+    };
+  }, [lastBookingRefresh]);
 
   // Ambil tanggal hari ini
   const todayObj = new Date();
@@ -818,6 +878,34 @@ export default function BookingClient({
 
         {/* ------- kolom kanan: ringkasan + form (sticky di desktop) ------- */}
         <div className="lg:sticky lg:top-24">
+          {!bookingJustCompleted && lastBooking && (
+            <section className="mb-3 rounded-xl border border-line bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs font-semibold text-ink/60">
+                Booking terakhirmu · {lastBooking.code}
+              </p>
+              <p className="mt-1 text-sm text-ink">
+                {lastBooking.service_name} ·{" "}
+                {new Intl.DateTimeFormat("id-ID", {
+                  timeZone: "Asia/Jakarta",
+                  day: "numeric",
+                  month: "short",
+                }).format(new Date(lastBooking.starts_at))}{" "}
+                ·{" "}
+                {new Intl.DateTimeFormat("en-GB", {
+                  timeZone: "Asia/Jakarta",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hourCycle: "h23",
+                }).format(new Date(lastBooking.starts_at))}
+              </p>
+              <Link
+                href={`/ringkasan/${lastBookingToken}`}
+                className="mt-1 inline-block min-h-11 py-3 text-xs font-semibold text-ink/70 underline underline-offset-2"
+              >
+                Kelola
+              </Link>
+            </section>
+          )}
           <BookingForm
             complete={Boolean(
               selectedService &&
@@ -832,10 +920,17 @@ export default function BookingClient({
             date={selectedDate}
             dateLabel={formatTanggalLabel(selectedDate)}
             slotMinutes={validSelectedSlot ?? 0}
-            onBooked={() => {
+            onBooked={(token) => {
+              setBookingJustCompleted(true);
+              setLastBookingToken(token);
               setSameDayOffer(null);
               setAnyBarberSlotsError("");
               setRefreshKey((k) => k + 1);
+            }}
+            onStartAnother={() => {
+              setBookingJustCompleted(false);
+              setLastBooking(null);
+              setLastBookingRefresh((key) => key + 1);
             }}
             onSlotConflict={() => {
               setAnyBarberSlotsError("");
