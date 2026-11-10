@@ -36,7 +36,11 @@ export default function BookingSummaryClient({
   const router = useRouter();
   const [dialog, setDialog] = useState<"cancel" | "reschedule" | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [cancelledHere, setCancelledHere] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const startsAt = new Date(summary.starts_at);
   const blockReason =
@@ -56,11 +60,11 @@ export default function BookingSummaryClient({
   async function confirmAction() {
     if (!dialog || busy) return;
     setBusy(true);
-    setMessage("");
+    setNotice(null);
     try {
       const result = await cancelBookingByToken(token);
       if (!result.ok) {
-        setMessage(result.message);
+        setNotice({ kind: "error", text: result.message });
         router.refresh();
         return;
       }
@@ -69,19 +73,54 @@ export default function BookingSummaryClient({
       if (dialog === "reschedule") {
         router.push("/booking");
       } else {
-        setMessage("Booking berhasil dibatalkan.");
-        router.refresh();
+        setCancelledHere(true);
+        setNotice(null);
+        try {
+          if (localStorage.getItem("barberpro:last-booking") === token) {
+            localStorage.removeItem("barberpro:last-booking");
+          }
+        } catch {
+          // Pembatalan tetap berhasil bila penyimpanan browser tidak tersedia.
+        }
       }
     } catch (error) {
-      setMessage(
-        isNetworkError(error)
+      setNotice({
+        kind: "error",
+        text: isNetworkError(error)
           ? NETWORK_ERROR_MESSAGE
-          : "Pembatalan belum berhasil. Silakan coba lagi."
-      );
+          : "Pembatalan belum berhasil. Silakan coba lagi.",
+      });
     } finally {
       setBusy(false);
     }
   }
+
+  if (cancelledHere) {
+    return (
+      <section className="card p-6">
+        <p className="eyebrow">Pembatalan selesai</p>
+        <h1 className="mt-2 font-display text-2xl font-semibold">
+          Booking dibatalkan
+        </h1>
+        <p className="mt-3 text-sm text-ink/70">
+          Booking {summary.code} berhasil dibatalkan.
+        </p>
+        <Link href="/booking" className="btn-gold mt-5 block min-h-11 w-full text-center">
+          Buat booking baru
+        </Link>
+        <Link
+          href="/"
+          className="mt-2 block min-h-11 rounded-xl px-4 py-2 text-center text-sm font-semibold text-ink/70 hover:bg-cream"
+        >
+          Ke beranda
+        </Link>
+      </section>
+    );
+  }
+
+  const isConfirmed = summary.status === "confirmed";
+  const isTooLate =
+    isConfirmed && summary.cancel_block_reason === "too_late";
 
   return (
     <>
@@ -103,48 +142,55 @@ export default function BookingSummaryClient({
           <SummaryRow label="Status" value={statusLabel} />
         </dl>
 
-        {message && (
+        {notice && (
           <p
-            role={message.includes("berhasil") ? "status" : "alert"}
-            className={`mt-4 rounded-xl p-3 text-sm ${
-              message.includes("berhasil")
-                ? "bg-emerald-50 text-emerald-800"
-                : "bg-red-50 text-red-800"
-            }`}
+            role={notice.kind === "success" ? "status" : "alert"}
+            className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800"
           >
-            {message}
+            {notice.text}
           </p>
         )}
 
-        {!summary.can_cancel && blockReason && (
+        {isTooLate && (
           <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
             {blockReason}
           </p>
         )}
 
         <div className="mt-5 grid gap-2">
-          <button
-            type="button"
-            disabled={!summary.can_cancel || busy}
-            onClick={() => setDialog("cancel")}
-            className="btn-gold min-h-11 w-full disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Batalkan booking
-          </button>
-          <button
-            type="button"
-            disabled={!summary.can_cancel || busy}
-            onClick={() => setDialog("reschedule")}
-            className="min-h-11 w-full rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Ubah jadwal
-          </button>
-          <Link
-            href="/booking"
-            className="min-h-11 rounded-xl px-4 py-2 text-center text-sm font-semibold text-ink/70 hover:bg-cream"
-          >
-            Kembali ke booking
-          </Link>
+          {summary.can_cancel ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDialog("cancel")}
+                className="btn-gold min-h-11 w-full disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Batalkan booking
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDialog("reschedule")}
+                className="min-h-11 w-full rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Ubah jadwal
+              </button>
+              <Link
+                href="/booking"
+                className="min-h-11 rounded-xl px-4 py-2 text-center text-sm font-semibold text-ink/70 hover:bg-cream"
+              >
+                Kembali ke booking
+              </Link>
+            </>
+          ) : !isConfirmed ? (
+            <Link
+              href="/booking"
+              className="btn-gold min-h-11 w-full text-center"
+            >
+              Buat booking baru
+            </Link>
+          ) : null}
         </div>
       </section>
 
@@ -172,9 +218,9 @@ export default function BookingSummaryClient({
               ? "Booking ini akan dibatalkan, lalu kamu memilih jadwal baru."
               : "Booking ini akan dibatalkan dan slotnya tersedia kembali."}
           </p>
-          {message && (
+          {notice && (
             <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-              {message}
+              {notice.text}
             </p>
           )}
           <div className="mt-6 grid gap-2">
