@@ -82,6 +82,7 @@ export function buildCustomerBookingMessage(p: {
    barberName: string;
    date: string;
    timeLabel: string;
+   managementUrl?: string;
 }): string {
    return [
       p.storeName,
@@ -91,6 +92,7 @@ export function buildCustomerBookingMessage(p: {
       `Barber: ${p.barberName}`,
       `Tanggal: ${p.date}`,
       `Jam: ${p.timeLabel} WIB`,
+      ...(p.managementUrl ? [`Lihat booking: ${p.managementUrl}`] : []),
       "Status: TERKONFIRMASI ✅ — datang 5–10 menit sebelum jam sesi.",
    ].join("\n");
 }

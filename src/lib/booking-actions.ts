@@ -270,16 +270,18 @@ export async function createBooking(input: BookingInput) {
       return { ok: false as  const, message: "Layanan atau barber tidak ditemukan." };
    }
 
-   const { error } = await supabase.from("bookings").insert({
-      service_id: data.serviceId,
-      barber_id: barber.id,
-      customer_name: data.customerName,
-      customer_phone: normalizedPhone,
-      customer_notes: data.customerNotes === "" ? null : data.customerNotes,
-      starts_at: toIso(data.date, data.slotMinutes),
-      ends_at: toIso(data.date, effectiveSlotEnd),
-      status: "confirmed",
-   });
+   const { data: publicToken, error } = await supabase.rpc(
+      "insert_booking_returning_token",
+      {
+         p_service_id: data.serviceId,
+         p_barber_id: barber.id,
+         p_customer_name: data.customerName,
+         p_customer_phone: normalizedPhone,
+         p_customer_notes: data.customerNotes === "" ? null : data.customerNotes,
+         p_starts_at: toIso(data.date, data.slotMinutes),
+         p_ends_at: toIso(data.date, effectiveSlotEnd),
+      }
+   );
 
    if (error) {
       if (error.code === "23P01") { 
@@ -297,7 +299,7 @@ export async function createBooking(input: BookingInput) {
             message: "Kamu sudah punya booking dengan nomor ini. Batalkan booking atau pakai nomor lain."
          }
       }
-      
+
       if (error.code === "42501") { 
          // RLS menolak → tidak ada policy yang mengizinkan
          return {
@@ -307,6 +309,26 @@ export async function createBooking(input: BookingInput) {
       }
 
       return { ok: false as const, message: "Gagal menyimpan booking. Coba lagi nanti" };
+   }
+
+   if (!publicToken) {
+      return {
+         ok: false as const,
+         message: "Booking tersimpan, tetapi tautan pengelolaan belum tersedia. Hubungi barbershop.",
+      };
+   }
+
+   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+   let managementUrl: string | undefined;
+   if (siteUrl) {
+      try {
+         managementUrl = new URL(
+            `/ringkasan/${publicToken}`,
+            `${siteUrl.replace(/\/+$/, "")}/`
+         ).toString();
+      } catch {
+         managementUrl = undefined;
+      }
    }
 
    const [adminWa, custWa] = await Promise.allSettled([
@@ -330,24 +352,25 @@ export async function createBooking(input: BookingInput) {
             barberName: barber.name,
             date: formatTanggalPanjang(data.date),
             timeLabel: minutesToTime(data.slotMinutes),
+            managementUrl,
          })
       ),
    ]);
 
-   const waOk = adminWa.status === "fulfilled";
    const custOk = custWa.status === "fulfilled";
-   const message = [
-      "Booking berhasil.",
-      waOk ? "Admin sudah diberitahu via whatsapp." : "Gagal mengirim notif ke admin.",
-      custOk
-         ? "Konfirmasi WhatsApp terkirim ke nomormu."
-         : "WA konfirmasi ke nomormu gagal terkirim — bookingmu tetap tercatat.",
-   ].join("\n");
+   if (adminWa.status === "rejected") {
+      console.error("Notifikasi WhatsApp ke admin gagal.");
+   }
    
    return {
       ok: true as const,
-      message,
+      message: "Booking berhasil.",
+      warning: custOk
+         ? undefined
+         : "Konfirmasi WhatsApp belum terkirim. Simpan kode atau tautan booking kamu.",
       summary: {
+         publicToken,
+         code: publicToken.replace(/-/g, "").slice(0, 4).toUpperCase(),
          serviceName: service.name,
          barberName: barber.name,
          dateLabel: formatTanggalPanjang(data.date),

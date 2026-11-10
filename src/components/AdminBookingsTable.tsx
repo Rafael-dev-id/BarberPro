@@ -8,6 +8,7 @@ import { isTooCloseToCancel } from "@/lib/slots";
 import {
   findRunningSessions,
   getRowState,
+  getSessionTimes,
   jakartaDateKey,
   minutesPastEnd,
 } from "@/lib/booking-state";
@@ -71,6 +72,11 @@ type StartClearance = {
   selectedIds: number[];
 };
 
+type CustomerCancellationToast = {
+  id: number;
+  message: string;
+};
+
 export default function AdminBookingsTable({
   initialBookings,
   services,
@@ -103,16 +109,19 @@ export default function AdminBookingsTable({
     status: "done" | "cancelled";
   } | null>(null);
   const [actionError, setActionError] = useState("");
+  const [customerCancellationToast, setCustomerCancellationToast] =
+    useState<CustomerCancellationToast | null>(null);
   const [startClearance, setStartClearance] = useState<StartClearance | null>(null);
   const [startClearanceBusy, setStartClearanceBusy] = useState(false);
   const startClearanceResolver = useRef<((allowed: boolean) => void) | null>(null);
   const connectivityLostRef = useRef(false);
+  const customerCancellationIds = useRef(new Set<number>());
 
   async function reload(): Promise<boolean> {
     const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("bookings")
-      .select("*, services(name, price), barbers(name)")
+      .select("*, services(name, price, duration), barbers(name)")
       .order("starts_at", { ascending: true })
       .order("id", { ascending: true });
      
@@ -164,8 +173,30 @@ export default function AdminBookingsTable({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
-        () => {
-          reload();
+        (payload) => {
+          if (payload.eventType === "UPDATE") {
+            const booking = payload.new as Partial<BookingRow>;
+            if (
+              booking.status === "cancelled" &&
+              booking.cancelled_by === "customer" &&
+              typeof booking.id === "number" &&
+              !customerCancellationIds.current.has(booking.id)
+            ) {
+              customerCancellationIds.current.add(booking.id);
+              const barberName =
+                barbers.find((item) => item.id === booking.barber_id)?.name ??
+                "Kapster";
+              if (booking.customer_name && booking.starts_at) {
+                setCustomerCancellationToast({
+                  id: booking.id,
+                  message: `${booking.customer_name} membatalkan booking ${jakartaTimeFormatter.format(
+                    new Date(booking.starts_at)
+                  )} dengan ${barberName}`,
+                });
+              }
+            }
+          }
+          void reload();
         }
       )
       .subscribe((status: string) => {
@@ -181,7 +212,7 @@ export default function AdminBookingsTable({
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [barbers]);
 
   useEffect(() => {
     const clockTimer = setTimeout(() => setNowMs(Date.now()), 0);
@@ -191,6 +222,12 @@ export default function AdminBookingsTable({
       clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!customerCancellationToast) return;
+    const timer = setTimeout(() => setCustomerCancellationToast(null), 7000);
+    return () => clearTimeout(timer);
+  }, [customerCancellationToast]);
 
   useEffect(
     () => () => {
@@ -473,6 +510,22 @@ export default function AdminBookingsTable({
 
   return (
     <>
+      {customerCancellationToast && (
+        <div
+          key={customerCancellationToast.id}
+          role="status"
+          className="fixed bottom-4 left-4 right-4 z-50 mx-auto flex max-w-md items-start justify-between gap-4 rounded-xl border border-line bg-white p-4 text-sm text-ink shadow-xl"
+        >
+          <p>{customerCancellationToast.message}</p>
+          <button
+            type="button"
+            onClick={() => setCustomerCancellationToast(null)}
+            className="min-h-11 shrink-0 rounded-lg border border-line px-3 py-2 font-semibold hover:bg-cream"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
       <AdminStats bookings={bookings} nowMs={nowMs} />
       <section className="card mt-8 p-5 sm:p-6">
         <h2 className="font-display text-xl font-semibold">Kasir</h2>
@@ -662,10 +715,30 @@ export default function AdminBookingsTable({
               rows.map((b) => {
                 const rowState =
                   nowMs === null ? "other" : getRowState(b, nowMs);
+                const sessionTimes =
+                  b.status === "started" ? getSessionTimes(b) : null;
+                const statusLabel =
+                  b.status === "cancelled"
+                    ? b.cancelled_by === "customer"
+                      ? "Dibatalkan pelanggan"
+                      : b.cancelled_by === "admin"
+                        ? "Dibatalkan admin"
+                        : "Dibatalkan"
+                    : statusLabels[b.status] ?? b.status;
                 return (
                 <tr key={b.id} className="border-b border-line">
                   <td className="py-3 pr-3">
-                    {formatBookingDateTime(b.starts_at)}
+                    {sessionTimes
+                      ? `${formatBookingDateLabel(sessionTimes.startedAt)} · mulai ${jakartaTimeFormatter.format(
+                          new Date(sessionTimes.startedAt)
+                        )} · selesai ${
+                          sessionTimes.estimatedEndAt
+                            ? jakartaTimeFormatter.format(
+                                new Date(sessionTimes.estimatedEndAt)
+                              )
+                            : "estimasi belum tersedia"
+                        }`
+                      : formatBookingDateTime(b.starts_at)}
                   </td>
                   <td className="py-3 pr-3">
                     {b.customer_name}
@@ -673,6 +746,9 @@ export default function AdminBookingsTable({
                       {b.customer_phone.startsWith("walkin-")
                         ? "Tanpa nomor"
                         : b.customer_phone}
+                    </span>
+                    <span className="block text-xs text-ink/50">
+                      Kode {b.public_token.replace(/-/g, "").slice(0, 4).toUpperCase()}
                     </span>
                   </td>
                   <td className="py-3 pr-3">
@@ -688,7 +764,7 @@ export default function AdminBookingsTable({
                         statusColors[b.status] || "bg-cream text-ink/70"
                       }`}
                     >
-                      {statusLabels[b.status] ?? b.status}
+                      {statusLabel}
                     </span>
                     {rowState === "overdue" && b.status === "confirmed" && (
                       <span
@@ -709,8 +785,11 @@ export default function AdminBookingsTable({
                     {rowState === "overtime" && nowMs !== null && (
                       <span
                         title={`Estimasi selesai ${jakartaTimeFormatter.format(
-                          new Date(b.ends_at)
-                        )} sudah lewat ${minutesPastEnd(b.ends_at, nowMs)} menit`}
+                          new Date(sessionTimes?.estimatedEndAt ?? b.ends_at)
+                        )} sudah lewat ${minutesPastEnd(
+                          sessionTimes?.estimatedEndAt ?? b.ends_at,
+                          nowMs
+                        )} menit`}
                         className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
                       >
                         Lewat estimasi
@@ -908,22 +987,25 @@ export default function AdminBookingsTable({
           <div className="mt-4 space-y-2">
             {startClearance.sessions.map((session) => {
               const state = getRowState(session, startClearance.nowMs);
+              const sessionTimes = getSessionTimes(session);
               const description =
                 state === "overtime"
                   ? `lewat estimasi ${minutesPastEnd(
-                      session.ends_at,
+                      sessionTimes.estimatedEndAt ?? session.ends_at,
                       startClearance.nowMs
                     )} mnt`
                   : state === "in_session"
-                    ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
-                        new Date(session.ends_at)
-                      )})`
+                    ? sessionTimes.estimatedEndAt
+                      ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
+                          new Date(sessionTimes.estimatedEndAt)
+                        )})`
+                      : "estimasi selesai belum tersedia"
                     : state === "future_session"
                       ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
                           new Date(session.starts_at)
                         )}`
                       : `belum ditutup sejak ${formatBookingDateLabel(
-                          session.starts_at
+                          sessionTimes.startedAt
                         )}`;
               return (
                 <label
@@ -953,7 +1035,12 @@ export default function AdminBookingsTable({
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-ink">
                       {session.customer_name} · mulai{" "}
-                      {jakartaTimeFormatter.format(new Date(session.starts_at))}
+                      {jakartaTimeFormatter.format(new Date(sessionTimes.startedAt))}
+                      {sessionTimes.estimatedEndAt
+                        ? ` · selesai ${jakartaTimeFormatter.format(
+                            new Date(sessionTimes.estimatedEndAt)
+                          )}`
+                        : " · estimasi selesai belum tersedia"}
                     </span>
                     <span className="block text-xs text-ink/70">
                       {description}

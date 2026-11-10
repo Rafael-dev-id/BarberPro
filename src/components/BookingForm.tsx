@@ -16,8 +16,9 @@ interface BookingFormProps {
   date: string;
   dateLabel?: string;
   slotMinutes: number;
-  onBooked: () => void;
+  onBooked: (token: string) => void;
   onSlotConflict: () => void;
+  onStartAnother: () => void;
 }
 
 interface FormErrors {
@@ -27,6 +28,8 @@ interface FormErrors {
 
 type SubmitStatus = "idle" | "loading" | "success" | "error";
 type BookingSummary = {
+  publicToken: string;
+  code: string;
   serviceName: string;
   barberName: string;
   dateLabel: string;
@@ -45,6 +48,7 @@ export default function BookingForm({
   slotMinutes,
   onBooked,
   onSlotConflict,
+  onStartAnother,
 }: BookingFormProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -52,7 +56,43 @@ export default function BookingForm({
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [serverMessage, setServerMessage] = useState("");
+  const [serverWarning, setServerWarning] = useState("");
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
+
+  function getManagementUrl(token: string): string {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    return new URL(`/ringkasan/${token}`, siteUrl).toString();
+  }
+
+  async function copyManagementUrl(token: string) {
+    const url = getManagementUrl(token);
+    setCopied(false);
+    setCopyError("");
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      try {
+        document.body.appendChild(textarea);
+        textarea.select();
+        if (!document.execCommand("copy")) {
+          setCopyError("Tautan tidak dapat disalin. Salin alamat secara manual.");
+          return;
+        }
+      } catch {
+        setCopyError("Tautan tidak dapat disalin. Salin alamat secara manual.");
+        return;
+      } finally {
+        textarea.remove();
+      }
+    }
+    setCopied(true);
+  }
 
   function clearError(field: keyof FormErrors) {
     setErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -89,9 +129,17 @@ export default function BookingForm({
 
     setStatus(result.ok ? "success" : "error");
     setServerMessage(result.message);
+    setServerWarning(result.ok ? result.warning ?? "" : "");
     setBookingSummary(result.ok ? result.summary : null);
 
-    if (result.ok) onBooked();
+    if (result.ok) {
+      try {
+        localStorage.setItem("barberpro:last-booking", result.summary.publicToken);
+      } catch {
+        // Booking tetap berhasil bila penyimpanan browser tidak tersedia.
+      }
+      onBooked(result.summary.publicToken);
+    }
     else if (result.message === "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain.") {
       onSlotConflict();
     }
@@ -104,7 +152,11 @@ export default function BookingForm({
      setErrors({});
      setStatus("idle");
      setServerMessage("");
+     setServerWarning("");
      setBookingSummary(null);
+     setCopied(false);
+     setCopyError("");
+     onStartAnother();
   }
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.
@@ -112,6 +164,7 @@ export default function BookingForm({
      // eslint-disable-next-line react-hooks/set-state-in-effect
      setStatus((current) => current === "error" ? "idle" : current);
      setServerMessage("");
+     setServerWarning("");
   }, [date, serviceId, barberId]);
 
   /* Saat belum lengkap: tampilkan kartu ringkasan "hidup".
@@ -149,6 +202,19 @@ export default function BookingForm({
            {bookingSummary && (
              <dl className="mt-3 space-y-1 rounded-xl bg-ink/5 p-4 text-sm">
                <div className="flex justify-between gap-3">
+                 <dt className="text-ink/60">Kode booking</dt>
+                 <dd className="flex items-center gap-2 text-right font-semibold tracking-wider">
+                   {bookingSummary.code}
+                   <button
+                     type="button"
+                     onClick={() => void copyManagementUrl(bookingSummary.publicToken)}
+                     className="text-xs font-medium tracking-normal text-ink/60 underline underline-offset-2 hover:text-ink"
+                   >
+                     {copied ? "Tersalin" : "Salin tautan"}
+                   </button>
+                 </dd>
+               </div>
+               <div className="flex justify-between gap-3">
                  <dt className="text-ink/60">Layanan</dt>
                  <dd className="text-right font-medium">{bookingSummary.serviceName}</dd>
                </div>
@@ -170,22 +236,38 @@ export default function BookingForm({
                </div>
              </dl>
            )}
-           <div className="mt-3 rounded-xl bg-emerald-50 p-5 text-sm text-emerald-700 whitespace-pre-line lh-3 text-base/7 tracking-wide">
-              {serverMessage}
-           </div>
+           {copyError && (
+             <p role="status" className="mt-2 text-sm text-red-700">{copyError}</p>
+           )}
+           {bookingSummary && (
+             <Link
+               href={`/ringkasan/${bookingSummary.publicToken}`}
+               className="btn-gold mt-4 block min-h-11 w-full text-center"
+             >
+               Lihat booking
+             </Link>
+           )}
+           <p className="mt-3 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
+             Booking berhasil.
+           </p>
+           {serverWarning && (
+             <p className="mt-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+               {serverWarning}
+             </p>
+           )}
 
            <button
               type="button"
               onClick={resetForm}
-              className="btn-gold mt-4 w-full"
+              className="mt-3 min-h-11 w-full rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink hover:bg-cream"
            >
               Buat booking lain
            </button>
            <Link
               href="/"
-              className="btn-gold mt-4 w-full text-center"
+              className="mt-2 block py-2 text-center text-xs font-medium text-ink/60 underline underline-offset-2 hover:text-ink"
            >
-              Selesai
+              Ke beranda
            </Link>
         </section>
      );

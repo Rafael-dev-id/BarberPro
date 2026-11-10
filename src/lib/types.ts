@@ -26,7 +26,7 @@ export interface WorkingHour {
    end_time: string;
 }
 
-// Bentuk baris dari select("*, services(name, price), barbers(name)").
+// Bentuk baris dari select("*, services(name, price, duration), barbers(name)").
 // Diekspor supaya halaman admin bisa memakai tipe yang sama.
 export type BookingRow = {
   id: number;
@@ -35,8 +35,11 @@ export type BookingRow = {
   customer_phone: string;
   starts_at: string;
   ends_at: string;
+  public_token: string;
+  cancelled_by: "customer" | "admin" | null;
+  started_at: string | null;
   customer_notes?: string | null;
   status: string;
-  services: { name: string; price: number } | null;
+  services: { name: string; price: number; duration?: number } | null;
   barbers: { name: string } | null;
 };

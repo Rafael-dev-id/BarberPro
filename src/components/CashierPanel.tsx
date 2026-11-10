@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { getJakartaNow } from "@/lib/slots";
 import { formatRupiah } from "@/lib/format";
-import { getRowState, minutesPastEnd } from "@/lib/booking-state";
+import {
+  getRowState,
+  getSessionTimes,
+  minutesPastEnd,
+} from "@/lib/booking-state";
 import { type Barber, type BookingRow } from "@/lib/types";
 
 interface CashierPanelProps {
@@ -113,7 +117,9 @@ export default function CashierPanel({
               )}
               {startedBookings.length > 0 ? (
                 <div className="mt-3 space-y-3">
-                  {startedBookings.map((booking) => (
+                  {startedBookings.map((booking) => {
+                    const sessionTimes = getSessionTimes(booking);
+                    return (
                     <div
                       key={booking.id}
                       className="rounded-xl border border-emerald-200 bg-white p-3"
@@ -126,13 +132,17 @@ export default function CashierPanel({
                           : booking.customer_phone}
                       </p>
                       <p className="mt-1 text-sm text-ink/70">
-                        Mulai {formatJakartaTime(booking.starts_at)} · estimasi selesai{" "}
-                        {formatJakartaTime(booking.ends_at)}
+                        Mulai {formatJakartaTime(sessionTimes.startedAt)} · selesai{" "}
+                        {sessionTimes.estimatedEndAt
+                          ? formatJakartaTime(sessionTimes.estimatedEndAt)
+                          : "estimasi belum tersedia"}
                       </p>
                       {nowMs !== null &&
+                        sessionTimes.estimatedEndAt &&
                         getRowState(booking, nowMs) === "overtime" && (
                           <p className="mt-2 text-sm font-semibold text-red-700">
-                            Lewat estimasi {minutesPastEnd(booking.ends_at, nowMs)} mnt.
+                            Lewat estimasi{" "}
+                            {minutesPastEnd(sessionTimes.estimatedEndAt, nowMs)} mnt.
                             Tekan Selesai bila sudah selesai.
                           </p>
                         )}
@@ -150,7 +160,8 @@ export default function CashierPanel({
                         Selesai · {formatRupiah(booking.services?.price ?? 0)}
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-ink/70">Kosong</p>
