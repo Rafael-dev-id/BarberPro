@@ -6,6 +6,7 @@ import { updateBookingStatus } from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
 import {
+  findRunningSessions,
   getRowState,
   jakartaDateKey,
   minutesPastEnd,
@@ -62,6 +63,14 @@ function formatBookingDateTime(iso: string): string {
   return `${formatBookingDateLabel(date)} · ${jakartaTimeFormatter.format(date)}`;
 }
 
+type StartClearance = {
+  barberName: string;
+  newCustomerLabel: string;
+  sessions: BookingRow[];
+  nowMs: number;
+  selectedIds: number[];
+};
+
 export default function AdminBookingsTable({
   initialBookings,
   services,
@@ -94,8 +103,12 @@ export default function AdminBookingsTable({
     status: "done" | "cancelled";
   } | null>(null);
   const [actionError, setActionError] = useState("");
+  const [startClearance, setStartClearance] = useState<StartClearance | null>(null);
+  const [startClearanceBusy, setStartClearanceBusy] = useState(false);
+  const startClearanceResolver = useRef<((allowed: boolean) => void) | null>(null);
+  const connectivityLostRef = useRef(false);
 
-  async function reload() {
+  async function reload(): Promise<boolean> {
     const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("bookings")
@@ -114,9 +127,17 @@ export default function AdminBookingsTable({
     
     if (error) {
        setLive("RELOAD GAGAL"); 
-       return;
+       return false;
     }
     setLive(liveStatusRef.current);
+    if (
+      liveStatusRef.current === "SUBSCRIBED" &&
+      connectivityLostRef.current
+    ) {
+      setActionError("");
+      connectivityLostRef.current = false;
+    }
+    return true;
   }
 
 
@@ -148,6 +169,7 @@ export default function AdminBookingsTable({
         }
       )
       .subscribe((status: string) => {
+        if (status !== "SUBSCRIBED") connectivityLostRef.current = true;
         liveStatusRef.current = status;
         setLive(status);
       });
@@ -170,6 +192,14 @@ export default function AdminBookingsTable({
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      startClearanceResolver.current?.(false);
+      startClearanceResolver.current = null;
+    },
+    []
+  );
+
   async function applyStatus(bookingId: number, newStatus: string): Promise<boolean> {
     setBusyId(bookingId);
     setActionError("");
@@ -189,9 +219,119 @@ export default function AdminBookingsTable({
     }
   }
 
+  function resolveStartClearance(allowed: boolean) {
+    const resolve = startClearanceResolver.current;
+    if (!resolve) return;
+    startClearanceResolver.current = null;
+    setStartClearance(null);
+    setStartClearanceBusy(false);
+    resolve(allowed);
+  }
+
+  function requestStartClearance(
+    barberId: number,
+    newCustomerLabel: string
+  ): Promise<boolean> {
+    setActionError("");
+    const currentTime = nowMs ?? Date.now();
+    const sessions = findRunningSessions(
+      bookings,
+      (booking) => booking.barber_id === barberId,
+      currentTime
+    );
+    if (sessions.length === 0) return Promise.resolve(true);
+
+    const barberName =
+      barbers.find((barber) => barber.id === barberId)?.name ??
+      sessions[0].barbers?.name ??
+      "Kapster";
+
+    return new Promise((resolve) => {
+      startClearanceResolver.current?.(false);
+      startClearanceResolver.current = resolve;
+      setStartClearance({
+        barberName,
+        newCustomerLabel,
+        sessions,
+        nowMs: currentTime,
+        selectedIds: sessions
+          .filter((session) => {
+            const state = getRowState(session, currentTime);
+            return state === "overtime" || state === "stale_session";
+          })
+          .map((session) => session.id),
+      });
+    });
+  }
+
+  async function finishRunningSessionsThenStart() {
+    if (
+      !startClearance ||
+      startClearanceBusy ||
+      startClearance.selectedIds.length === 0
+    ) {
+      return;
+    }
+    setStartClearanceBusy(true);
+    setActionError("");
+    let allowed = true;
+    let errorMessage = "";
+    let completedCount = 0;
+    const sessionsToFinish = startClearance.sessions.filter((session) =>
+      startClearance.selectedIds.includes(session.id)
+    );
+
+    try {
+      for (const session of sessionsToFinish) {
+        const result = await updateBookingStatus(session.id, "done");
+        if (!result.ok) {
+          allowed = false;
+          errorMessage =
+            completedCount > 0
+              ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${result.message}. Sesi baru belum dimulai.`
+              : result.message;
+          break;
+        }
+        completedCount += 1;
+      }
+    } catch {
+      allowed = false;
+      const error = "Gagal terhubung. Coba lagi.";
+      errorMessage =
+        completedCount > 0
+          ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${error}. Sesi baru belum dimulai.`
+          : error;
+    }
+
+    let reloaded = false;
+    try {
+      reloaded = await reload();
+    } catch {
+      errorMessage ||= "Gagal terhubung. Coba lagi.";
+    }
+    if (!reloaded) {
+      allowed = false;
+      if (!errorMessage) errorMessage = "Gagal terhubung. Coba lagi.";
+    }
+
+    if (errorMessage) setActionError(errorMessage);
+    resolveStartClearance(allowed);
+  }
+
   function handleStatus(bookingId: number, newStatus: string) {
     if (newStatus === "done" || newStatus === "cancelled") {
       setPendingAction({ id: bookingId, status: newStatus });
+      return;
+    }
+    if (newStatus === "started") {
+      setActionError("");
+      const booking = bookings.find((item) => item.id === bookingId);
+      if (!booking) return;
+      void requestStartClearance(booking.barber_id, booking.customer_name).then(
+        (allowed) => {
+          if (allowed) void applyStatus(bookingId, newStatus);
+        }
+      );
       return;
     }
     void applyStatus(bookingId, newStatus);
@@ -312,6 +452,16 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
+  const startClearanceHasWa =
+    startClearance?.sessions.some(
+      (session) =>
+        startClearance.selectedIds.includes(session.id) &&
+        !session.customer_phone.startsWith("walkin-")
+    ) ?? false;
+  const selectedStartSessions =
+    startClearance?.sessions.filter((session) =>
+      startClearance.selectedIds.includes(session.id)
+    ) ?? [];
 
   useEffect(() => {
      const timer = setTimeout(() => {
@@ -385,6 +535,7 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
+          onBeforeStart={requestStartClearance}
           onSuccess={(message) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
@@ -714,6 +865,106 @@ export default function AdminBookingsTable({
           if (busyId !== pendingAction?.id) setPendingAction(null);
         }}
       />
+      <ConfirmDialog
+        open={startClearance !== null}
+        tone="warning"
+        title="Kapster masih punya sesi berjalan"
+        details={
+          startClearance
+            ? [
+                { label: "Kapster", value: startClearance.barberName },
+                {
+                  label: "Pelanggan baru",
+                  value: startClearance.newCustomerLabel,
+                },
+              ]
+            : []
+        }
+        note={
+          startClearance
+            ? `Pilih 'Tetap mulai' bila kapster memang mengerjakan dua pelanggan sekaligus.${
+                startClearanceHasWa
+                  ? " Pelanggan yang sesinya diselesaikan akan dikabari lewat WhatsApp."
+                  : ""
+              }`
+            : undefined
+        }
+        confirmLabel={
+          selectedStartSessions.length === 0
+            ? "Pilih sesi yang diselesaikan"
+            : selectedStartSessions.length === 1
+              ? `Selesaikan ${selectedStartSessions[0].customer_name} lalu mulai`
+              : `Selesaikan ${selectedStartSessions.length} sesi lalu mulai`
+        }
+        confirmDisabled={selectedStartSessions.length === 0}
+        secondaryLabel="Tetap mulai"
+        cancelLabel="Batal"
+        busy={startClearanceBusy}
+        onConfirm={() => void finishRunningSessionsThenStart()}
+        onSecondary={() => resolveStartClearance(true)}
+        onCancel={() => resolveStartClearance(false)}
+      >
+        {startClearance && (
+          <div className="mt-4 space-y-2">
+            {startClearance.sessions.map((session) => {
+              const state = getRowState(session, startClearance.nowMs);
+              const description =
+                state === "overtime"
+                  ? `lewat estimasi ${minutesPastEnd(
+                      session.ends_at,
+                      startClearance.nowMs
+                    )} mnt`
+                  : state === "in_session"
+                    ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
+                        new Date(session.ends_at)
+                      )})`
+                    : state === "future_session"
+                      ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
+                          new Date(session.starts_at)
+                        )}`
+                      : `belum ditutup sejak ${formatBookingDateLabel(
+                          session.starts_at
+                        )}`;
+              return (
+                <label
+                  key={session.id}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2"
+                >
+                  <input
+                    type="checkbox"
+                    checked={startClearance.selectedIds.includes(session.id)}
+                    disabled={startClearanceBusy}
+                    onChange={(event) => {
+                      setStartClearance((current) =>
+                        current
+                          ? {
+                              ...current,
+                              selectedIds: event.target.checked
+                                ? [...current.selectedIds, session.id]
+                                : current.selectedIds.filter(
+                                    (id) => id !== session.id
+                                  ),
+                            }
+                          : current
+                      );
+                    }}
+                    className="h-4 w-4 accent-amber-600"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-ink">
+                      {session.customer_name} · mulai{" "}
+                      {jakartaTimeFormatter.format(new Date(session.starts_at))}
+                    </span>
+                    <span className="block text-xs text-ink/70">
+                      {description}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
