@@ -1,14 +1,12 @@
 "use server";
 
-import { after } from "next/server";
 import { supabase } from "@/lib/supabase";
 import {
   isNetworkError,
   NETWORK_ERROR_MESSAGE,
 } from "@/lib/admin-auth";
-import { sendWhatsAppToAdmin } from "@/lib/whatsapp";
-import type { PublicBookingSummary } from "@/lib/public-booking";
 import { UUID_PATTERN } from "@/lib/public-booking";
+import { scheduleCustomerCancellationNotice } from "@/lib/booking-notifications";
 
 type CancelResult =
   | { code: "ok"; ok: true }
@@ -17,32 +15,6 @@ type CancelResult =
       ok: false;
       message: string;
     };
-
-function getAdminCancellationNotice(summary: PublicBookingSummary): string {
-  const startsAt = new Date(summary.starts_at);
-  const date = new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(startsAt);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(startsAt);
-
-  return [
-    "🔔 PEMBATALAN BOOKING PELANGGAN",
-    "",
-    `Kode: ${summary.code}`,
-    `Nama: ${summary.customer_name}`,
-    `Layanan: ${summary.service_name}`,
-    `Kapster: ${summary.barber_name}`,
-    `Jadwal: ${date} · ${time} WIB`,
-  ].join("\n");
-}
 
 export async function cancelBookingByToken(token: string): Promise<CancelResult> {
   if (!UUID_PATTERN.test(token)) {
@@ -68,20 +40,7 @@ export async function cancelBookingByToken(token: string): Promise<CancelResult>
     }
 
     if (data === "ok") {
-      after(async () => {
-        try {
-          const { data: summary, error: summaryError } = await supabase.rpc(
-            "get_booking_summary",
-            { p_token: token }
-          );
-          if (summaryError || !summary) return;
-          await sendWhatsAppToAdmin(
-            getAdminCancellationNotice(summary as PublicBookingSummary)
-          );
-        } catch {
-          // Notifikasi admin bersifat best-effort.
-        }
-      });
+      scheduleCustomerCancellationNotice(token);
       return { ok: true, code: "ok" };
     }
 
