@@ -12,6 +12,8 @@ import {
 } from "@/lib/public-booking";
 import { scheduleCustomerCancellationNotice } from "@/lib/booking-notifications";
 
+export const LAST_BOOKING_RELEVANCE_MINUTES = 30;
+
 type CancelResult =
   | { code: "ok"; ok: true }
   | {
@@ -42,7 +44,8 @@ export async function getLastBookingSummary(
     const summary = data as PublicBookingSummary;
     if (
       summary.status !== "confirmed" ||
-      new Date(summary.starts_at).getTime() <= Date.now()
+      new Date(summary.starts_at).getTime() <=
+        Date.now() - LAST_BOOKING_RELEVANCE_MINUTES * 60_000
     ) {
       return { kind: "invalid" };
     }
