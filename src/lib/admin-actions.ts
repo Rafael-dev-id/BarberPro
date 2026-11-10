@@ -19,15 +19,23 @@ import {
    timeToMinutes,
 } from "@/lib/slots";
 import { STORE } from "@/lib/data";
+import {
+   isNetworkError,
+   NETWORK_ERROR_MESSAGE,
+   requireAdminUser,
+} from "@/lib/admin-auth";
 
 const statusSchema = z.enum(["confirmed", "started", "done", "cancelled"]);
 
 export async function updateBookingStatus(bookingId: number, newStatus: string) {
    const supabase = await createSupabaseServerClient();
 
-   // Cek ganda di server: apakah yang memanggil benar-benar admin? 
-   const { data: { user } } = await supabase.auth.getUser();
-   if (!user) {
+   // Cek ganda di server: apakah yang memanggil benar-benar admin?
+   const auth = await requireAdminUser(supabase);
+   if (auth.status === "unavailable") {
+      return { ok: false as const, message: NETWORK_ERROR_MESSAGE };
+   }
+   if (auth.status === "unauthenticated") {
       return { ok: false as const, message: "Kamu harus login." };
    }
 
@@ -46,7 +54,9 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
    if (bookingCheckError) {
       return {
          ok: false as const,
-         message: "Gagal memeriksa booking. Silakan coba lagi.",
+         message: isNetworkError(bookingCheckError)
+            ? NETWORK_ERROR_MESSAGE
+            : "Gagal memeriksa booking. Silakan coba lagi.",
       };
    }
    if (!currentBooking) {
@@ -80,7 +90,9 @@ export async function updateBookingStatus(bookingId: number, newStatus: string) 
      if (error) {
        return { 
           ok: false as const, 
-          message: "Gagal update status." 
+          message: isNetworkError(error)
+             ? NETWORK_ERROR_MESSAGE
+             : "Gagal update status."
        };
      }
 
@@ -166,8 +178,11 @@ const walkInSchema = z.object({
 
 export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    const supabase = await createSupabaseServerClient();
-   const { data: { user } } = await supabase.auth.getUser();
-   if (!user) {
+   const auth = await requireAdminUser(supabase);
+   if (auth.status === "unavailable") {
+      return { ok: false as const, message: NETWORK_ERROR_MESSAGE };
+   }
+   if (auth.status === "unauthenticated") {
       return { ok: false as const, message: "Kamu harus login." };
    }
 
@@ -207,7 +222,9 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
       if (sameDayBookingError) {
          return {
             ok: false as const,
-            message: "Gagal memeriksa booking pada tanggal ini. Silakan coba lagi.",
+            message: isNetworkError(sameDayBookingError)
+               ? NETWORK_ERROR_MESSAGE
+               : "Gagal memeriksa booking pada tanggal ini. Silakan coba lagi.",
          };
       }
       if ((sameDayBookingCount ?? 0) > 0) {
@@ -240,10 +257,21 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    ]);
 
    if (serviceResult.error || barberResult.error) {
-      return { ok: false as const, message: "Layanan atau kapster tidak ditemukan." };
+      const error = serviceResult.error ?? barberResult.error;
+      return {
+         ok: false as const,
+         message: error && isNetworkError(error)
+            ? NETWORK_ERROR_MESSAGE
+            : "Layanan atau kapster tidak ditemukan.",
+      };
    }
    if (workingHoursResult.error) {
-      return { ok: false as const, message: "Gagal memeriksa jam kerja kapster." };
+      return {
+         ok: false as const,
+         message: isNetworkError(workingHoursResult.error)
+            ? NETWORK_ERROR_MESSAGE
+            : "Gagal memeriksa jam kerja kapster.",
+      };
    }
 
    const service = serviceResult.data;
@@ -266,8 +294,13 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    let bookedRanges: { startMinutes: number; endMinutes: number }[];
    try {
       bookedRanges = await getBookedSlots(data.barberId, data.date);
-   } catch {
-      return { ok: false as const, message: "Gagal memeriksa ketersediaan jam." };
+   } catch (error) {
+      return {
+         ok: false as const,
+         message: isNetworkError(error)
+            ? NETWORK_ERROR_MESSAGE
+            : "Gagal memeriksa ketersediaan jam.",
+      };
    }
    // Match the stored range: starts_at is the slot; ends_at is the real-time end.
    if (
@@ -295,6 +328,9 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
    });
 
    if (error) {
+      if (isNetworkError(error)) {
+         return { ok: false as const, message: NETWORK_ERROR_MESSAGE };
+      }
       if (error.code === "23P01") {
          return { ok: false as const, message: "Slot bentrok dengan booking lain. Pilih jam lain." };
       }
