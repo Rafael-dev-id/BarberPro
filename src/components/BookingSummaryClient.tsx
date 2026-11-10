@@ -216,12 +216,12 @@ export default function BookingSummaryClient({
             </>
           </div>
         )}
-        {!isConfirmed && (
+        {!summary.can_cancel && (
           <Link
             href="/booking"
             className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-ink/70 underline underline-offset-2"
           >
-            Buat booking baru
+            Kembali ke booking
           </Link>
         )}
       </section>

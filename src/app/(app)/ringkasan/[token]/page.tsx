@@ -8,6 +8,7 @@ import {
 import BookingSummaryClient from "@/components/BookingSummaryClient";
 import { isNetworkError } from "@/lib/admin-auth";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -103,6 +104,12 @@ function BookingSummaryMessage({
     <section className="card p-6">
       <h1 className="font-display text-xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-ink/70">{message}</p>
+      <Link
+        href="/booking"
+        className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-ink/70 underline underline-offset-2"
+      >
+        Kembali ke booking
+      </Link>
     </section>
   );
 }
