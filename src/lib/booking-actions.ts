@@ -318,6 +318,19 @@ export async function createBooking(input: BookingInput) {
       };
    }
 
+   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+   let managementUrl: string | undefined;
+   if (siteUrl) {
+      try {
+         managementUrl = new URL(
+            `/ringkasan/${publicToken}`,
+            `${siteUrl.replace(/\/+$/, "")}/`
+         ).toString();
+      } catch {
+         managementUrl = undefined;
+      }
+   }
+
    const [adminWa, custWa] = await Promise.allSettled([
       sendWhatsAppToAdmin(
          buildBookingMessage({
@@ -339,23 +352,22 @@ export async function createBooking(input: BookingInput) {
             barberName: barber.name,
             date: formatTanggalPanjang(data.date),
             timeLabel: minutesToTime(data.slotMinutes),
+            managementUrl,
          })
       ),
    ]);
 
-   const waOk = adminWa.status === "fulfilled";
    const custOk = custWa.status === "fulfilled";
-   const message = [
-      "Booking berhasil.",
-      waOk ? "Admin sudah diberitahu via whatsapp." : "Gagal mengirim notif ke admin.",
-      custOk
-         ? "Konfirmasi WhatsApp terkirim ke nomormu."
-         : "WA konfirmasi ke nomormu gagal terkirim — bookingmu tetap tercatat.",
-   ].join("\n");
+   if (adminWa.status === "rejected") {
+      console.error("Notifikasi WhatsApp ke admin gagal.");
+   }
    
    return {
       ok: true as const,
-      message,
+      message: "Booking berhasil.",
+      warning: custOk
+         ? undefined
+         : "Konfirmasi WhatsApp belum terkirim. Simpan kode atau tautan booking kamu.",
       summary: {
          publicToken,
          code: publicToken.replace(/-/g, "").slice(0, 4).toUpperCase(),
