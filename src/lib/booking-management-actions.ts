@@ -12,7 +12,7 @@ import {
 } from "@/lib/public-booking";
 import { scheduleCustomerCancellationNotice } from "@/lib/booking-notifications";
 
-export const LAST_BOOKING_RELEVANCE_MINUTES = 30;
+const LAST_BOOKING_RELEVANCE_MINUTES = 30;
 
 type CancelResult =
   | { code: "ok"; ok: true }
