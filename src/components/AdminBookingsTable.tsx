@@ -121,7 +121,7 @@ export default function AdminBookingsTable({
     const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase
       .from("bookings")
-      .select("*, services(name, price), barbers(name)")
+      .select("*, services(name, price, duration), barbers(name)")
       .order("starts_at", { ascending: true })
       .order("id", { ascending: true });
      
@@ -731,9 +731,13 @@ export default function AdminBookingsTable({
                     {sessionTimes
                       ? `${formatBookingDateLabel(sessionTimes.startedAt)} · mulai ${jakartaTimeFormatter.format(
                           new Date(sessionTimes.startedAt)
-                        )} · selesai ${jakartaTimeFormatter.format(
-                          new Date(sessionTimes.estimatedEndAt)
-                        )}`
+                        )} · selesai ${
+                          sessionTimes.estimatedEndAt
+                            ? jakartaTimeFormatter.format(
+                                new Date(sessionTimes.estimatedEndAt)
+                              )
+                            : "estimasi belum tersedia"
+                        }`
                       : formatBookingDateTime(b.starts_at)}
                   </td>
                   <td className="py-3 pr-3">
@@ -987,13 +991,15 @@ export default function AdminBookingsTable({
               const description =
                 state === "overtime"
                   ? `lewat estimasi ${minutesPastEnd(
-                      sessionTimes.estimatedEndAt,
+                      sessionTimes.estimatedEndAt ?? session.ends_at,
                       startClearance.nowMs
                     )} mnt`
                   : state === "in_session"
-                    ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
-                        new Date(sessionTimes.estimatedEndAt)
-                      )})`
+                    ? sessionTimes.estimatedEndAt
+                      ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
+                          new Date(sessionTimes.estimatedEndAt)
+                        )})`
+                      : "estimasi selesai belum tersedia"
                     : state === "future_session"
                       ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
                           new Date(session.starts_at)
@@ -1029,13 +1035,12 @@ export default function AdminBookingsTable({
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-ink">
                       {session.customer_name} · mulai{" "}
-                      {jakartaTimeFormatter.format(
-                        new Date(sessionTimes.startedAt)
-                      )}{" "}
-                      · selesai{" "}
-                      {jakartaTimeFormatter.format(
-                        new Date(sessionTimes.estimatedEndAt)
-                      )}
+                      {jakartaTimeFormatter.format(new Date(sessionTimes.startedAt))}
+                      {sessionTimes.estimatedEndAt
+                        ? ` · selesai ${jakartaTimeFormatter.format(
+                            new Date(sessionTimes.estimatedEndAt)
+                          )}`
+                        : " · estimasi selesai belum tersedia"}
                     </span>
                     <span className="block text-xs text-ink/70">
                       {description}

@@ -333,6 +333,7 @@ export async function createWalkInBooking(input: z.infer<typeof walkInSchema>) {
       starts_at: startsAt,
       ends_at: endsAt,
       status: data.startNow ? "started" : "confirmed",
+      ...(data.startNow ? { started_at: new Date().toISOString() } : {}),
    });
 
    if (error) {

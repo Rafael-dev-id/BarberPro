@@ -14,7 +14,7 @@ export default async function AdminPage() {
    // Relational Query: Join tabel bookings, services, dan barbers 
    const { data: bookings, error } = await supabase
       .from("bookings")
-      .select("*, services(name, price), barbers(name)")
+      .select("*, services(name, price, duration), barbers(name)")
       .order("starts_at", { ascending: true })
       .order("id", { ascending: true });
 

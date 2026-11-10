@@ -133,9 +133,12 @@ export default function CashierPanel({
                       </p>
                       <p className="mt-1 text-sm text-ink/70">
                         Mulai {formatJakartaTime(sessionTimes.startedAt)} · selesai{" "}
-                        {formatJakartaTime(sessionTimes.estimatedEndAt)}
+                        {sessionTimes.estimatedEndAt
+                          ? formatJakartaTime(sessionTimes.estimatedEndAt)
+                          : "estimasi belum tersedia"}
                       </p>
                       {nowMs !== null &&
+                        sessionTimes.estimatedEndAt &&
                         getRowState(booking, nowMs) === "overtime" && (
                           <p className="mt-2 text-sm font-semibold text-red-700">
                             Lewat estimasi{" "}

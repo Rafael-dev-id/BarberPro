@@ -32,17 +32,27 @@ export function getSessionTimes(booking: {
   starts_at: string;
   ends_at: string;
   started_at?: string | null;
-}): { startedAt: string; estimatedEndAt: string } {
+  services?: { duration?: number } | null;
+}): { startedAt: string; estimatedEndAt: string | null } {
   const startedAt = booking.started_at ?? booking.starts_at;
-  const durationMs =
+  const storedRangeDurationMs =
     new Date(booking.ends_at).getTime() -
     new Date(booking.starts_at).getTime();
+  const durationMs =
+    typeof booking.services?.duration === "number" &&
+    Number.isFinite(booking.services.duration) &&
+    booking.services.duration > 0
+      ? booking.services.duration * 60_000
+      : storedRangeDurationMs > 0
+        ? storedRangeDurationMs
+        : null;
 
   return {
     startedAt,
-    estimatedEndAt: new Date(
-      new Date(startedAt).getTime() + durationMs
-    ).toISOString(),
+    estimatedEndAt:
+      durationMs === null
+        ? null
+        : new Date(new Date(startedAt).getTime() + durationMs).toISOString(),
   };
 }
 
@@ -95,8 +105,9 @@ export function getRowState(
 
   if (booking.status === "started") {
     if (bookingDate === today) {
+      if (!sessionTimes?.estimatedEndAt) return "in_session";
       return nowMs >
-        new Date(sessionTimes!.estimatedEndAt).getTime() +
+        new Date(sessionTimes.estimatedEndAt).getTime() +
           OVERDUE_GRACE_MINUTES * 60_000
         ? "overtime"
         : "in_session";
