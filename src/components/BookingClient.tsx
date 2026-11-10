@@ -654,6 +654,37 @@ export default function BookingClient({
         </p>
       </header>
 
+      {!bookingJustCompleted && lastBooking && (
+        <section className="mb-5 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <p className="text-sm font-semibold text-ink">
+              Booking terakhirmu · {lastBooking.code}
+            </p>
+            <p className="text-xs text-ink/70">
+              {lastBooking.service_name} ·{" "}
+              {new Intl.DateTimeFormat("id-ID", {
+                timeZone: "Asia/Jakarta",
+                day: "numeric",
+                month: "short",
+              }).format(new Date(lastBooking.starts_at))}{" "}
+              ·{" "}
+              {new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Jakarta",
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+              }).format(new Date(lastBooking.starts_at))}
+            </p>
+            <Link
+              href={`/ringkasan/${lastBookingToken}`}
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-ink underline underline-offset-2"
+            >
+              Lihat booking
+            </Link>
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:items-start">
         {/* ------- kolom kiri: langkah 1-4 ------- */}
         <div className="space-y-10">
@@ -878,34 +909,6 @@ export default function BookingClient({
 
         {/* ------- kolom kanan: ringkasan + form (sticky di desktop) ------- */}
         <div className="lg:sticky lg:top-24">
-          {!bookingJustCompleted && lastBooking && (
-            <section className="mb-3 rounded-xl border border-line bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs font-semibold text-ink/60">
-                Booking terakhirmu · {lastBooking.code}
-              </p>
-              <p className="mt-1 text-sm text-ink">
-                {lastBooking.service_name} ·{" "}
-                {new Intl.DateTimeFormat("id-ID", {
-                  timeZone: "Asia/Jakarta",
-                  day: "numeric",
-                  month: "short",
-                }).format(new Date(lastBooking.starts_at))}{" "}
-                ·{" "}
-                {new Intl.DateTimeFormat("en-GB", {
-                  timeZone: "Asia/Jakarta",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hourCycle: "h23",
-                }).format(new Date(lastBooking.starts_at))}
-              </p>
-              <Link
-                href={`/ringkasan/${lastBookingToken}`}
-                className="mt-1 inline-block min-h-11 py-3 text-xs font-semibold text-ink/70 underline underline-offset-2"
-              >
-                Kelola
-              </Link>
-            </section>
-          )}
           <BookingForm
             complete={Boolean(
               selectedService &&
