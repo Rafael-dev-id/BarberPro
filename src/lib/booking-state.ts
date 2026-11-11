@@ -28,6 +28,21 @@ export function minutesPastEnd(endsAtIso: string, nowMs: number): number {
   );
 }
 
+export function getMinutesLate(
+  booking: { status: string; starts_at: string },
+  nowMs: number
+): number | null {
+  const startsAtMs = new Date(booking.starts_at).getTime();
+  if (
+    booking.status !== "confirmed" ||
+    jakartaDateKey(startsAtMs) !== jakartaDateKey(nowMs) ||
+    nowMs <= startsAtMs
+  ) {
+    return null;
+  }
+  return Math.max(1, Math.floor((nowMs - startsAtMs) / 60_000));
+}
+
 export function getSessionTimes(booking: {
   starts_at: string;
   ends_at: string;

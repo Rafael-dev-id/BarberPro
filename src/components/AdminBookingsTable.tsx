@@ -11,6 +11,7 @@ import { isTooCloseToCancel } from "@/lib/slots";
 import {
   getRowState,
   getSessionTimes,
+  getMinutesLate,
   jakartaDateKey,
   minutesPastEnd,
 } from "@/lib/booking-state";
@@ -725,6 +726,8 @@ export default function AdminBookingsTable({
               rows.map((b) => {
                 const rowState =
                   nowMs === null ? "other" : getRowState(b, nowMs);
+                const minutesLate =
+                  nowMs === null ? null : getMinutesLate(b, nowMs);
                 const sessionTimes =
                   b.status === "started" ? getSessionTimes(b) : null;
                 const statusLabel =
@@ -782,6 +785,11 @@ export default function AdminBookingsTable({
                         className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
                       >
                         Terlewat
+                      </span>
+                    )}
+                    {minutesLate !== null && (
+                      <span className="ml-1 inline-block text-xs font-medium text-amber-900">
+                        Telat {minutesLate} menit
                       </span>
                     )}
                     {rowState === "stale_session" && (
