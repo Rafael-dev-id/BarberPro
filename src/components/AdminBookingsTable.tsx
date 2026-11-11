@@ -73,6 +73,8 @@ type StartConflict = {
   time: string;
   kind: "running" | "booked";
   message: string;
+  sessionId: number | null;
+  canFinishFirst: boolean;
   suggestedBarber?: Pick<Barber, "id" | "name">;
   nearestSlotSame?: {
     barber: Pick<Barber, "id" | "name">;
@@ -324,15 +326,26 @@ export default function AdminBookingsTable({
   }
 
   async function resolveStartConflict(
-    choice: "start_with_barber" | "schedule_any" | "schedule_same",
-    barberId?: number
+    choice:
+      | "start_with_barber"
+      | "schedule_any"
+      | "schedule_same"
+      | "finish_then_start",
+    barberId?: number,
+    sessionId?: number
   ) {
     if (!startDialog || startDialog.kind !== "conflict" || busyId !== null) return;
     const bookingId = startDialog.id;
     setBusyId(bookingId);
     setActionError("");
     try {
-      const result = await resolveBookingStart(bookingId, choice, barberId);
+      const result = await resolveBookingStart(
+        bookingId,
+        choice,
+        barberId,
+        sessionId
+      );
+      if (choice === "finish_then_start") await reload();
       if (result.ok) {
         setStartDialog(null);
         await reload();
@@ -1006,6 +1019,25 @@ export default function AdminBookingsTable({
             : []
         }
         note={activeStartConflict?.message}
+        leadingLabel={
+          activeStartConflict?.kind === "running" &&
+          activeStartConflict.canFinishFirst &&
+          activeStartConflict.sessionId !== null
+            ? `Selesaikan ${activeStartConflict.customerName} lalu mulai`
+            : undefined
+        }
+        onLeading={() => {
+          if (
+            startDialog?.kind === "conflict" &&
+            startDialog.conflict.sessionId !== null
+          ) {
+            void resolveStartConflict(
+              "finish_then_start",
+              undefined,
+              startDialog.conflict.sessionId
+            );
+          }
+        }}
         confirmLabel={primaryStartResolution?.label ?? "Tidak ada pilihan tersedia"}
         hideConfirm={!primaryStartResolution}
         secondaryLabel={secondaryStartResolution?.label}
