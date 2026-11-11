@@ -10,7 +10,11 @@ import {
 } from "@/lib/whatsapp";
 import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 import { formatTanggalLabel, formatTanggalPanjang } from "@/lib/format";
-import { jakartaDateKey } from "@/lib/booking-state";
+import {
+   getSessionTimes,
+   jakartaDateKey,
+   OVERDUE_GRACE_MINUTES,
+} from "@/lib/booking-state";
 import {
    getJakartaNow,
    timeToMinutes,
@@ -64,6 +68,8 @@ type StartConflict = {
    time: string;
    kind: "running" | "booked";
    message: string;
+   sessionId: number | null;
+   canFinishFirst: boolean;
    suggestedBarber?: SchedulingBarber;
    nearestSlotSame?: BarberSlot;
    nearestSlotAny?: BarberSlot;
@@ -77,15 +83,12 @@ function estimatedSessionEnd(booking: ActiveBooking): string {
    const service = Array.isArray(booking.services)
       ? booking.services[0]
       : booking.services;
-   const serviceDurationMs =
-      typeof service?.duration === "number" && service.duration > 0
-         ? service.duration * 60_000
-         : new Date(booking.ends_at).getTime() -
-           new Date(booking.starts_at).getTime();
-   return new Date(
-      new Date(booking.started_at ?? booking.starts_at).getTime() +
-         serviceDurationMs
-   ).toISOString();
+   return getSessionTimes({
+      starts_at: booking.starts_at,
+      ends_at: booking.ends_at,
+      started_at: booking.started_at,
+      services: service,
+   }).estimatedEndAt ?? booking.ends_at;
 }
 
 function jakartaWeekday(date: string): number {
@@ -416,6 +419,12 @@ function makeStartConflict(
       customerName: booking.customer_name,
       time,
       kind,
+      sessionId: kind === "running" ? booking.id : null,
+      canFinishFirst:
+         kind === "running" &&
+         nowMs >
+            new Date(estimatedSessionEnd(booking)).getTime() +
+               OVERDUE_GRACE_MINUTES * 60_000,
       message: `${sourceBarber && sourceBarber.id !== barber.id ? `${sourceBarber.name} dipilih. ` : ""}${message}${
          suggestedBarber ? ` Mulai dengan ${suggestedBarber.name}?` : ""
       }`,
@@ -630,8 +639,9 @@ async function requireAdmin(supabase: ServerSupabaseClient) {
 
 export async function resolveBookingStart(
    bookingId: number,
-   choice: "start_with_barber" | "schedule_any" | "schedule_same",
-   barberId?: number
+   choice: "start_with_barber" | "schedule_any" | "schedule_same" | "finish_then_start",
+   barberId?: number,
+   sessionId?: number
 ) {
    const supabase = await createSupabaseServerClient();
    const auth = await requireAdmin(supabase);
@@ -639,9 +649,101 @@ export async function resolveBookingStart(
    if (
       choice !== "start_with_barber" &&
       choice !== "schedule_any" &&
-      choice !== "schedule_same"
+      choice !== "schedule_same" &&
+      choice !== "finish_then_start"
    ) {
       return { ok: false as const, message: "Pilihan mulai tidak valid." };
+   }
+
+   if (choice === "finish_then_start") {
+      if (!Number.isInteger(sessionId) || !sessionId || sessionId < 1) {
+         return { ok: false as const, message: "Sesi yang dipilih tidak valid." };
+      }
+
+      const { data: target, error: targetError } = await supabase
+         .from("bookings")
+         .select("status, barber_id, customer_name")
+         .eq("id", bookingId)
+         .maybeSingle();
+      if (targetError || !target) {
+         return {
+            ok: false as const,
+            message: targetError && isNetworkError(targetError)
+               ? NETWORK_ERROR_MESSAGE
+               : "Booking yang akan dimulai tidak ditemukan.",
+         };
+      }
+      if (target.status !== "confirmed") {
+         return { ok: false as const, message: "Booking ini bukan lagi berstatus dikonfirmasi." };
+      }
+
+      const { data: session, error: sessionError } = await supabase
+         .from("bookings")
+         .select("id, barber_id, customer_name, status, starts_at, ends_at, started_at, services(duration)")
+         .eq("id", sessionId)
+         .maybeSingle();
+      if (sessionError || !session) {
+         return {
+            ok: false as const,
+            message: sessionError && isNetworkError(sessionError)
+               ? NETWORK_ERROR_MESSAGE
+               : "Sesi berjalan tidak ditemukan.",
+         };
+      }
+      if (session.status !== "started" || session.barber_id !== target.barber_id) {
+         return {
+            ok: false as const,
+            message: "Sesi atau kapster sudah berubah. Muat ulang lalu coba lagi.",
+         };
+      }
+      if (
+         Date.now() <=
+         new Date(estimatedSessionEnd(session as ActiveBooking)).getTime() +
+            OVERDUE_GRACE_MINUTES * 60_000
+      ) {
+         return {
+            ok: false as const,
+            message: `${session.customer_name} masih dalam estimasi. Sesi belum diselesaikan.`,
+         };
+      }
+
+      const finishResult = await updateBookingStatus(sessionId, "done");
+      if (!finishResult.ok) {
+         return {
+            ok: false as const,
+            message:
+               ("message" in finishResult && finishResult.message) ||
+               `${session.customer_name} belum dapat diselesaikan.`,
+         };
+      }
+
+      const startResult = await runBookingStart(
+         supabase,
+         bookingId,
+         true,
+         target.barber_id
+      );
+      if (!startResult.ok) {
+         if ("code" in startResult && startResult.code === "conflict") {
+            return {
+               ...startResult,
+               conflict: {
+                  ...startResult.conflict,
+                  message: `${session.customer_name} sudah diselesaikan. ${startResult.conflict.message}`,
+               },
+            };
+         }
+         const reason =
+            "message" in startResult
+               ? startResult.message
+               : "perlu konfirmasi tambahan";
+         return {
+            ok: false as const,
+            message: `${session.customer_name} sudah diselesaikan, ${target.customer_name} belum dimulai: ${reason}`,
+         };
+      }
+      revalidatePath("/admin");
+      return { ok: true as const };
    }
 
    if (choice === "start_with_barber") {
