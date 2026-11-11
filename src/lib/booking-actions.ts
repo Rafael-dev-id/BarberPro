@@ -181,11 +181,10 @@ export async function createBooking(input: BookingInput) {
                startMinutes: number;
                endMinutes: number;
             }[] = await getBookedSlots(candidate.id, data.date);
-            // Match the stored range: starts_at is the slot; ends_at is the real-time end.
             if (
                bookedRanges.some(
                   (range) =>
-                     data.slotMinutes < range.endMinutes &&
+                     effectiveSlotStart < range.endMinutes &&
                      effectiveSlotEnd > range.startMinutes
                )
             ) {
@@ -386,7 +385,8 @@ export async function getBookedSlots(barberId: number, date: string) {
 
    if (!idOk || !dateOk) return [];
 
-   const startIso = `${date}T00:00:00+07:00`;
+   const dayStartMs = new Date(`${date}T00:00:00+07:00`).getTime();
+   const startIso = new Date(dayStartMs - 24 * 60 * 60 * 1000).toISOString();
    const endIso = `${date}T23:59:59+07:00`;
 
    const { data, error } = await supabase.rpc("get_booked_slots", {
@@ -398,13 +398,12 @@ export async function getBookedSlots(barberId: number, date: string) {
    if (error || !data) return [];
 
    return data.map((b: { starts_at: string; ends_at: string }) => ({
-      startMinutes: isoToMinutes(b.starts_at),
-      endMinutes: isoToMinutes(b.ends_at),
+      startMinutes: isoToMinutes(b.starts_at, date),
+      endMinutes: isoToMinutes(b.ends_at, date),
    }));
 }
 
-function isoToMinutes(iso: string): number {
-   const d = new Date(iso);
-   const hours = (d.getUTCHours() + 7) % 24;
-   return hours * 60 + d.getUTCMinutes();
+function isoToMinutes(iso: string, date: string): number {
+   const dayStartMs = new Date(`${date}T00:00:00+07:00`).getTime();
+   return (new Date(iso).getTime() - dayStartMs) / 60_000;
 }

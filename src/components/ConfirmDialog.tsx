@@ -14,6 +14,7 @@ interface ConfirmDialogProps {
   note?: string;
   confirmLabel: string;
   confirmDisabled?: boolean;
+  hideConfirm?: boolean;
   secondaryLabel?: string;
   onSecondary?: () => void;
   cancelLabel?: string;
@@ -32,6 +33,7 @@ export default function ConfirmDialog({
   note,
   confirmLabel,
   confirmDisabled = false,
+  hideConfirm = false,
   secondaryLabel,
   onSecondary,
   cancelLabel = "Batal",
@@ -67,7 +69,9 @@ export default function ConfirmDialog({
   const confirmClass =
     tone === "danger"
       ? "bg-red-600 hover:bg-red-700"
-      : "bg-emerald-600 hover:bg-emerald-700";
+      : tone === "warning"
+        ? "bg-amber-600 hover:bg-amber-700"
+        : "bg-emerald-600 hover:bg-emerald-700";
   const describedBy = [
     warnings?.length ? warningsId : null,
     note ? noteId : null,
@@ -145,16 +149,18 @@ export default function ConfirmDialog({
               : "mt-6 flex flex-col gap-2 sm:flex-row-reverse"
           }
         >
-          <button
-            type="button"
-            disabled={busy || confirmDisabled}
-            onClick={onConfirm}
-            className={`min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60 ${confirmClass} ${
-              secondaryLabel ? "w-full" : "flex-1"
-            }`}
-          >
-            {busy ? "Memproses…" : confirmLabel}
-          </button>
+          {!hideConfirm && (
+            <button
+              type="button"
+              disabled={busy || confirmDisabled}
+              onClick={onConfirm}
+              className={`min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-60 ${confirmClass} ${
+                secondaryLabel ? "w-full" : "flex-1"
+              }`}
+            >
+              {busy ? "Memproses…" : confirmLabel}
+            </button>
+          )}
           {secondaryLabel ? (
             <div className="flex gap-2">
               <button
