@@ -347,7 +347,6 @@ export default function WalkInForm({
             className="input-premium"
           >
             <option value="0">Siapa saja</option>
-            <option value="">Pilih kapster</option>
             {barbers.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
