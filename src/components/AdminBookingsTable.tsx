@@ -845,6 +845,8 @@ export default function AdminBookingsTable({
                     )}
                   </td>
                   <td className="py-3">
+                    <div className="flex flex-col items-start gap-4">
+                    <div className="flex flex-wrap items-center gap-3 empty:hidden">
                     {b.status === "pending" && (
                       <button
                         type="button"
@@ -889,16 +891,18 @@ export default function AdminBookingsTable({
                         Selesai
                       </button>
                     )}
+                    </div>
                     {(b.status === "confirmed" || b.status === "started") && (
                       <button
                         type="button"
                         disabled={busyId === b.id}
                         onClick={() => handleStatus(b.id, "cancelled")}
-                        className="ml-2 min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+                        className="min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
                       >
                         Batalkan
                       </button>
                     )}
+                    </div>
                   </td>
                 </tr>
                 );
