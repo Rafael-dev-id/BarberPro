@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { updateBookingStatus } from "@/lib/admin-actions";
+import {
+  resolveBookingStart,
+  updateBookingStatus,
+} from "@/lib/admin-actions";
 import { formatRupiah } from "@/lib/format";
 import { isTooCloseToCancel } from "@/lib/slots";
 import {
-  findRunningSessions,
   getRowState,
   getSessionTimes,
+  getMinutesLate,
   jakartaDateKey,
   minutesPastEnd,
 } from "@/lib/booking-state";
@@ -64,13 +67,36 @@ function formatBookingDateTime(iso: string): string {
   return `${formatBookingDateLabel(date)} · ${jakartaTimeFormatter.format(date)}`;
 }
 
-type StartClearance = {
+type StartConflict = {
   barberName: string;
-  newCustomerLabel: string;
-  sessions: BookingRow[];
-  nowMs: number;
-  selectedIds: number[];
+  customerName: string;
+  time: string;
+  kind: "running" | "booked";
+  message: string;
+  sessionId: number | null;
+  canFinishFirst: boolean;
+  suggestedBarber?: Pick<Barber, "id" | "name">;
+  nearestSlotSame?: {
+    barber: Pick<Barber, "id" | "name">;
+    startsAt: string;
+    label: string;
+  };
+  nearestSlotAny?: {
+    barber: Pick<Barber, "id" | "name">;
+    startsAt: string;
+    label: string;
+  };
 };
+
+type StartDialogState =
+  | {
+      kind: "early";
+      id: number;
+      customerName: string;
+      scheduleLabel: string;
+      nowLabel: string;
+    }
+  | { kind: "conflict"; id: number; conflict: StartConflict };
 
 type CustomerCancellationToast = {
   id: number;
@@ -89,6 +115,16 @@ export default function AdminBookingsTable({
   workingHours: WorkingHour[];
 }) {
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
+  const startedBarberIds = useMemo(
+    () => [
+      ...new Set(
+        bookings
+          .filter((booking) => booking.status === "started")
+          .map((booking) => booking.barber_id)
+      ),
+    ],
+    [bookings]
+  );
   const [nowMs, setNowMs] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all" | "custom">("today");
@@ -111,9 +147,7 @@ export default function AdminBookingsTable({
   const [actionError, setActionError] = useState("");
   const [customerCancellationToast, setCustomerCancellationToast] =
     useState<CustomerCancellationToast | null>(null);
-  const [startClearance, setStartClearance] = useState<StartClearance | null>(null);
-  const [startClearanceBusy, setStartClearanceBusy] = useState(false);
-  const startClearanceResolver = useRef<((allowed: boolean) => void) | null>(null);
+  const [startDialog, setStartDialog] = useState<StartDialogState | null>(null);
   const connectivityLostRef = useRef(false);
   const customerCancellationIds = useRef(new Set<number>());
 
@@ -229,21 +263,15 @@ export default function AdminBookingsTable({
     return () => clearTimeout(timer);
   }, [customerCancellationToast]);
 
-  useEffect(
-    () => () => {
-      startClearanceResolver.current?.(false);
-      startClearanceResolver.current = null;
-    },
-    []
-  );
-
   async function applyStatus(bookingId: number, newStatus: string): Promise<boolean> {
     setBusyId(bookingId);
     setActionError("");
     try {
       const result = await updateBookingStatus(bookingId, newStatus);
       if (!result.ok) {
-        setActionError(result.message);
+        setActionError(
+          "message" in result ? result.message : "Status booking belum berubah."
+        );
         return false;
       }
       await reload();
@@ -256,103 +284,85 @@ export default function AdminBookingsTable({
     }
   }
 
-  function resolveStartClearance(allowed: boolean) {
-    const resolve = startClearanceResolver.current;
-    if (!resolve) return;
-    startClearanceResolver.current = null;
-    setStartClearance(null);
-    setStartClearanceBusy(false);
-    resolve(allowed);
-  }
-
-  function requestStartClearance(
-    barberId: number,
-    newCustomerLabel: string
-  ): Promise<boolean> {
+  async function performStart(bookingId: number, confirmEarly: boolean) {
+    setBusyId(bookingId);
     setActionError("");
-    const currentTime = nowMs ?? Date.now();
-    const sessions = findRunningSessions(
-      bookings,
-      (booking) => booking.barber_id === barberId,
-      currentTime
-    );
-    if (sessions.length === 0) return Promise.resolve(true);
-
-    const barberName =
-      barbers.find((barber) => barber.id === barberId)?.name ??
-      sessions[0].barbers?.name ??
-      "Kapster";
-
-    return new Promise((resolve) => {
-      startClearanceResolver.current?.(false);
-      startClearanceResolver.current = resolve;
-      setStartClearance({
-        barberName,
-        newCustomerLabel,
-        sessions,
-        nowMs: currentTime,
-        selectedIds: sessions
-          .filter((session) => {
-            const state = getRowState(session, currentTime);
-            return state === "overtime" || state === "stale_session";
-          })
-          .map((session) => session.id),
-      });
-    });
-  }
-
-  async function finishRunningSessionsThenStart() {
-    if (
-      !startClearance ||
-      startClearanceBusy ||
-      startClearance.selectedIds.length === 0
-    ) {
-      return;
-    }
-    setStartClearanceBusy(true);
-    setActionError("");
-    let allowed = true;
-    let errorMessage = "";
-    let completedCount = 0;
-    const sessionsToFinish = startClearance.sessions.filter((session) =>
-      startClearance.selectedIds.includes(session.id)
-    );
-
     try {
-      for (const session of sessionsToFinish) {
-        const result = await updateBookingStatus(session.id, "done");
-        if (!result.ok) {
-          allowed = false;
-          errorMessage =
-            completedCount > 0
-              ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${result.message}. Sesi baru belum dimulai.`
-              : result.message;
-          break;
-        }
-        completedCount += 1;
+      const result = await updateBookingStatus(
+        bookingId,
+        "started",
+        confirmEarly
+      );
+      if (result.ok) {
+        setStartDialog(null);
+        await reload();
+      } else if ("code" in result && result.code === "early_confirmation") {
+        const booking = bookings.find((item) => item.id === bookingId);
+        setStartDialog({
+          kind: "early",
+          id: bookingId,
+          customerName: booking?.customer_name ?? "Pelanggan",
+          scheduleLabel: result.scheduleLabel,
+          nowLabel: result.nowLabel,
+        });
+      } else if ("code" in result && result.code === "conflict") {
+        setStartDialog({
+          kind: "conflict",
+          id: bookingId,
+          conflict: result.conflict,
+        });
+      } else {
+        setStartDialog(null);
+        setActionError(
+          "message" in result ? result.message : "Booking belum berubah."
+        );
       }
     } catch {
-      allowed = false;
-      const error = "Gagal terhubung. Coba lagi.";
-      errorMessage =
-        completedCount > 0
-          ? `${completedCount} sesi sudah diselesaikan, sisanya gagal: ${error}. Sesi baru belum dimulai.`
-          : error;
+      setStartDialog(null);
+      setActionError("Gagal terhubung. Coba lagi.");
+    } finally {
+      setBusyId(null);
     }
+  }
 
-    let reloaded = false;
+  async function resolveStartConflict(
+    choice:
+      | "start_with_barber"
+      | "schedule_any"
+      | "schedule_same"
+      | "finish_then_start",
+    barberId?: number,
+    sessionId?: number
+  ) {
+    if (!startDialog || startDialog.kind !== "conflict" || busyId !== null) return;
+    const bookingId = startDialog.id;
+    setBusyId(bookingId);
+    setActionError("");
     try {
-      reloaded = await reload();
+      const result = await resolveBookingStart(
+        bookingId,
+        choice,
+        barberId,
+        sessionId
+      );
+      if (choice === "finish_then_start") await reload();
+      if (result.ok) {
+        setStartDialog(null);
+        await reload();
+      } else if ("code" in result && result.code === "conflict") {
+        setStartDialog({ kind: "conflict", id: bookingId, conflict: result.conflict });
+      } else {
+        setStartDialog(null);
+        setActionError(
+          "message" in result ? result.message : "Booking belum berubah."
+        );
+      }
     } catch {
-      errorMessage ||= "Gagal terhubung. Coba lagi.";
+      setStartDialog(null);
+      setActionError("Gagal terhubung. Coba lagi.");
+    } finally {
+      setBusyId(null);
     }
-    if (!reloaded) {
-      allowed = false;
-      if (!errorMessage) errorMessage = "Gagal terhubung. Coba lagi.";
-    }
-
-    if (errorMessage) setActionError(errorMessage);
-    resolveStartClearance(allowed);
   }
 
   function handleStatus(bookingId: number, newStatus: string) {
@@ -361,14 +371,7 @@ export default function AdminBookingsTable({
       return;
     }
     if (newStatus === "started") {
-      setActionError("");
-      const booking = bookings.find((item) => item.id === bookingId);
-      if (!booking) return;
-      void requestStartClearance(booking.barber_id, booking.customer_name).then(
-        (allowed) => {
-          if (allowed) void applyStatus(bookingId, newStatus);
-        }
-      );
+      void performStart(bookingId, false);
       return;
     }
     void applyStatus(bookingId, newStatus);
@@ -404,6 +407,34 @@ export default function AdminBookingsTable({
     : "";
   const notifyCustomer =
     pendingBooking && !pendingBooking.customer_phone.startsWith("walkin-");
+  const activeStartConflict =
+    startDialog?.kind === "conflict" ? startDialog.conflict : null;
+  const primaryStartResolution =
+    activeStartConflict?.suggestedBarber
+      ? {
+          choice: "start_with_barber" as const,
+          barberId: activeStartConflict.suggestedBarber.id,
+          label: `Mulai sekarang dengan ${activeStartConflict.suggestedBarber.name}`,
+        }
+      : activeStartConflict?.nearestSlotAny
+        ? {
+            choice: "schedule_any" as const,
+            label: `Jadwalkan ${activeStartConflict.nearestSlotAny.label} dengan ${activeStartConflict.nearestSlotAny.barber.name}`,
+          }
+        : activeStartConflict?.nearestSlotSame
+          ? {
+              choice: "schedule_same" as const,
+              label: `Jadwalkan ulang ${activeStartConflict.nearestSlotSame.label} dengan ${activeStartConflict.nearestSlotSame.barber.name}`,
+            }
+          : null;
+  const secondaryStartResolution =
+    primaryStartResolution?.choice !== "schedule_same" &&
+    activeStartConflict?.nearestSlotSame
+      ? {
+          choice: "schedule_same" as const,
+          label: `Jadwalkan ulang ${activeStartConflict.nearestSlotSame.label} dengan ${activeStartConflict.nearestSlotSame.barber.name}`,
+        }
+      : null;
 
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
   const startToday = new Date(`${todayStr}T00:00:00+07:00`).getTime();
@@ -489,17 +520,6 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
-  const startClearanceHasWa =
-    startClearance?.sessions.some(
-      (session) =>
-        startClearance.selectedIds.includes(session.id) &&
-        !session.customer_phone.startsWith("walkin-")
-    ) ?? false;
-  const selectedStartSessions =
-    startClearance?.sessions.filter((session) =>
-      startClearance.selectedIds.includes(session.id)
-    ) ?? [];
-
   useEffect(() => {
      const timer = setTimeout(() => {
         setPage(1);
@@ -588,7 +608,7 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
-          onBeforeStart={requestStartClearance}
+          startedBarberIds={startedBarberIds}
           onSuccess={(message) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
@@ -599,8 +619,12 @@ export default function AdminBookingsTable({
       {walkInMessage && (
         <p
           role="status"
-          className={`mb-4 text-sm ${
+          className={`mb-4 rounded-xl border p-3 text-sm ${
             walkInMessage.toLowerCase().includes("gagal") ? "text-amber-800" : "text-emerald-800"
+          } ${
+            walkInMessage.toLowerCase().includes("gagal")
+              ? "border-amber-300 bg-amber-50"
+              : "border-emerald-200 bg-emerald-50"
           }`}
         >
           {walkInMessage}
@@ -715,6 +739,8 @@ export default function AdminBookingsTable({
               rows.map((b) => {
                 const rowState =
                   nowMs === null ? "other" : getRowState(b, nowMs);
+                const minutesLate =
+                  nowMs === null ? null : getMinutesLate(b, nowMs);
                 const sessionTimes =
                   b.status === "started" ? getSessionTimes(b) : null;
                 const statusLabel =
@@ -772,6 +798,11 @@ export default function AdminBookingsTable({
                         className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
                       >
                         Terlewat
+                      </span>
+                    )}
+                    {minutesLate !== null && (
+                      <span className="ml-1 inline-block text-xs font-medium text-amber-900">
+                        Telat {minutesLate} menit
                       </span>
                     )}
                     {rowState === "stale_session" && (
@@ -833,7 +864,8 @@ export default function AdminBookingsTable({
                           : `Mulai ${formatBookingDateLabel(b.starts_at)}`}
                       </span>
                     )}
-                    {b.status === "confirmed" && rowState === "today" && (
+                    {b.status === "confirmed" &&
+                      (rowState === "today" || rowState === "overdue") && (
                       <button
                         type="button"
                         disabled={busyId === b.id}
@@ -945,113 +977,91 @@ export default function AdminBookingsTable({
         }}
       />
       <ConfirmDialog
-        open={startClearance !== null}
+        open={startDialog?.kind === "early"}
         tone="warning"
-        title="Kapster masih punya sesi berjalan"
+        title="Mulai sebelum jadwal?"
         details={
-          startClearance
+          startDialog?.kind === "early"
             ? [
-                { label: "Kapster", value: startClearance.barberName },
-                {
-                  label: "Pelanggan baru",
-                  value: startClearance.newCustomerLabel,
-                },
+                { label: "Pelanggan", value: startDialog.customerName },
+                { label: "Jadwal", value: startDialog.scheduleLabel },
+                { label: "Mulai sekarang", value: startDialog.nowLabel },
               ]
             : []
         }
-        note={
-          startClearance
-            ? `Pilih 'Tetap mulai' bila kapster memang mengerjakan dua pelanggan sekaligus.${
-                startClearanceHasWa
-                  ? " Pelanggan yang sesinya diselesaikan akan dikabari lewat WhatsApp."
-                  : ""
-              }`
+        confirmLabel="Ya, mulai sekarang"
+        cancelLabel="Kembali"
+        busy={startDialog !== null && busyId === startDialog.id}
+        onConfirm={() => {
+          if (startDialog?.kind === "early") {
+            void performStart(startDialog.id, true);
+          }
+        }}
+        onCancel={() => {
+          if (startDialog && busyId !== startDialog.id) setStartDialog(null);
+        }}
+      />
+      <ConfirmDialog
+        open={startDialog?.kind === "conflict"}
+        tone="warning"
+        title={
+          activeStartConflict?.kind === "running"
+            ? "Kapster masih mengerjakan pelanggan"
+            : "Jadwal bertabrakan"
+        }
+        details={
+          activeStartConflict
+            ? [
+                { label: "Kapster", value: activeStartConflict.barberName },
+                { label: "Pelanggan", value: activeStartConflict.customerName },
+                { label: "Waktu", value: activeStartConflict.time },
+              ]
+            : []
+        }
+        note={activeStartConflict?.message}
+        leadingLabel={
+          activeStartConflict?.kind === "running" &&
+          activeStartConflict.canFinishFirst &&
+          activeStartConflict.sessionId !== null
+            ? `Selesaikan ${activeStartConflict.customerName} lalu mulai`
             : undefined
         }
-        confirmLabel={
-          selectedStartSessions.length === 0
-            ? "Pilih sesi yang diselesaikan"
-            : selectedStartSessions.length === 1
-              ? `Selesaikan ${selectedStartSessions[0].customer_name} lalu mulai`
-              : `Selesaikan ${selectedStartSessions.length} sesi lalu mulai`
-        }
-        confirmDisabled={selectedStartSessions.length === 0}
-        secondaryLabel="Tetap mulai"
-        cancelLabel="Batal"
-        busy={startClearanceBusy}
-        onConfirm={() => void finishRunningSessionsThenStart()}
-        onSecondary={() => resolveStartClearance(true)}
-        onCancel={() => resolveStartClearance(false)}
-      >
-        {startClearance && (
-          <div className="mt-4 space-y-2">
-            {startClearance.sessions.map((session) => {
-              const state = getRowState(session, startClearance.nowMs);
-              const sessionTimes = getSessionTimes(session);
-              const description =
-                state === "overtime"
-                  ? `lewat estimasi ${minutesPastEnd(
-                      sessionTimes.estimatedEndAt ?? session.ends_at,
-                      startClearance.nowMs
-                    )} mnt`
-                  : state === "in_session"
-                    ? sessionTimes.estimatedEndAt
-                      ? `masih dalam estimasi (selesai ${jakartaTimeFormatter.format(
-                          new Date(sessionTimes.estimatedEndAt)
-                        )})`
-                      : "estimasi selesai belum tersedia"
-                    : state === "future_session"
-                      ? `dimulai lebih awal dari jadwal ${jakartaTimeFormatter.format(
-                          new Date(session.starts_at)
-                        )}`
-                      : `belum ditutup sejak ${formatBookingDateLabel(
-                          sessionTimes.startedAt
-                        )}`;
-              return (
-                <label
-                  key={session.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={startClearance.selectedIds.includes(session.id)}
-                    disabled={startClearanceBusy}
-                    onChange={(event) => {
-                      setStartClearance((current) =>
-                        current
-                          ? {
-                              ...current,
-                              selectedIds: event.target.checked
-                                ? [...current.selectedIds, session.id]
-                                : current.selectedIds.filter(
-                                    (id) => id !== session.id
-                                  ),
-                            }
-                          : current
-                      );
-                    }}
-                    className="h-4 w-4 accent-amber-600"
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-ink">
-                      {session.customer_name} · mulai{" "}
-                      {jakartaTimeFormatter.format(new Date(sessionTimes.startedAt))}
-                      {sessionTimes.estimatedEndAt
-                        ? ` · selesai ${jakartaTimeFormatter.format(
-                            new Date(sessionTimes.estimatedEndAt)
-                          )}`
-                        : " · estimasi selesai belum tersedia"}
-                    </span>
-                    <span className="block text-xs text-ink/70">
-                      {description}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </ConfirmDialog>
+        onLeading={() => {
+          if (
+            startDialog?.kind === "conflict" &&
+            startDialog.conflict.sessionId !== null
+          ) {
+            void resolveStartConflict(
+              "finish_then_start",
+              undefined,
+              startDialog.conflict.sessionId
+            );
+          }
+        }}
+        confirmLabel={primaryStartResolution?.label ?? "Tidak ada pilihan tersedia"}
+        hideConfirm={!primaryStartResolution}
+        secondaryLabel={secondaryStartResolution?.label}
+        cancelLabel="Kembali"
+        busy={startDialog !== null && busyId === startDialog.id}
+        onConfirm={() => {
+          if (startDialog?.kind === "conflict" && primaryStartResolution) {
+            void resolveStartConflict(
+              primaryStartResolution.choice,
+              "barberId" in primaryStartResolution
+                ? primaryStartResolution.barberId
+                : undefined
+            );
+          }
+        }}
+        onSecondary={() => {
+          if (secondaryStartResolution) {
+            void resolveStartConflict(secondaryStartResolution.choice);
+          }
+        }}
+        onCancel={() => {
+          if (startDialog && busyId !== startDialog.id) setStartDialog(null);
+        }}
+      />
     </>
   );
 }

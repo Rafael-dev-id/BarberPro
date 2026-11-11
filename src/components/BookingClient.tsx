@@ -43,9 +43,9 @@ function isSlotTaken(
   const now = getJakartaNow();
   const slotEnd =
     effectiveStart(slot, now.minutes, date === now.date) + duration;
-  // Match the stored range: starts_at is the slot; ends_at is the real-time end.
+  const slotStart = effectiveStart(slot, now.minutes, date === now.date);
   return ranges.some(
-    (range) => slot < range.endMinutes && slotEnd > range.startMinutes
+    (range) => slotStart < range.endMinutes && slotEnd > range.startMinutes
   );
 }
 
