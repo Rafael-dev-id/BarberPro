@@ -5,6 +5,7 @@ import { isValidIndonesianPhone, normalizePhone } from "@/lib/phone";
 import { formatRupiah } from "@/lib/format";
 import { minutesToTime } from "@/lib/slots";
 import { createBooking } from "@/lib/booking-actions";
+import { bookingPath } from "@/lib/booking-link";
 import Link from "next/link";
 
 interface BookingFormProps {
@@ -63,7 +64,7 @@ export default function BookingForm({
 
   function getManagementUrl(token: string): string {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-    return new URL(`/ringkasan/${token}`, siteUrl).toString();
+    return new URL(bookingPath(token), siteUrl).toString();
   }
 
   async function copyManagementUrl(token: string) {
@@ -241,7 +242,7 @@ export default function BookingForm({
            )}
            {bookingSummary && (
              <Link
-               href={`/ringkasan/${bookingSummary.publicToken}`}
+               href={bookingPath(bookingSummary.publicToken)}
                className="btn-gold mt-4 block min-h-11 w-full text-center"
              >
                Lihat booking

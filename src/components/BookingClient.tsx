@@ -17,6 +17,7 @@ import { getLastBookingSummary } from "@/lib/booking-management-actions";
 import type { LastBookingSummary } from "@/lib/public-booking";
 import BookingForm from "@/components/BookingForm";
 import Link from "next/link";
+import { bookingPath } from "@/lib/booking-link";
 
 interface BookedRange {
   startMinutes: number;
@@ -676,7 +677,7 @@ export default function BookingClient({
               }).format(new Date(lastBooking.starts_at))}
             </p>
             <Link
-              href={`/ringkasan/${lastBookingToken}`}
+              href={bookingPath(lastBookingToken ?? "")}
               className="inline-flex min-h-11 items-center text-sm font-semibold text-ink underline underline-offset-2"
             >
               Lihat booking
