@@ -12,6 +12,7 @@ import {
 import { formatTanggalPanjang } from "@/lib/format";
 import { normalizePhone } from "@/lib/phone";
 import { STORE } from "@/lib/data";
+import { bookingPath } from "@/lib/booking-link";
 import {
    sendWhatsAppToAdmin,
    buildBookingMessage,
@@ -322,7 +323,7 @@ export async function createBooking(input: BookingInput) {
    if (siteUrl) {
       try {
          managementUrl = new URL(
-            `/ringkasan/${publicToken}`,
+            bookingPath(String(publicToken)),
             `${siteUrl.replace(/\/+$/, "")}/`
          ).toString();
       } catch {
