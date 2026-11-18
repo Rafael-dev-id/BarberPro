@@ -128,6 +128,7 @@ export async function createBooking(input: BookingInput) {
    const effectiveSlotEnd = effectiveSlotStart + service.duration;
 
    let barber: { id: number; name: string } | null = null;
+   let fallbackBarbers: { id: number; name: string }[] = [];
    if (data.barberId === 0) {
       const [year, month, day] = data.date.split("-").map(Number);
       const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -216,11 +217,19 @@ export async function createBooking(input: BookingInput) {
          (result): result is { candidate: (typeof activeBarbers)[number]; count: number } =>
             result !== null
       );
-      candidates.sort(
-         (left, right) =>
-            left.count - right.count || left.candidate.id - right.candidate.id
-      );
+      // Acak dulu supaya kapster dengan jumlah sesi sama tidak selalu jatuh ke
+      // id terkecil; sort bersifat stabil, jadi urutan acak dipertahankan
+      // di antara kapster yang jumlah sesinya seri.
+      for (let index = candidates.length - 1; index > 0; index -= 1) {
+         const swapIndex = Math.floor(Math.random() * (index + 1));
+         [candidates[index], candidates[swapIndex]] = [
+            candidates[swapIndex],
+            candidates[index],
+         ];
+      }
+      candidates.sort((left, right) => left.count - right.count);
       barber = candidates[0]?.candidate ?? null;
+      fallbackBarbers = candidates.slice(1).map((item) => item.candidate);
       if (!barber) {
          return {
             ok: false as const,
@@ -270,18 +279,26 @@ export async function createBooking(input: BookingInput) {
       return { ok: false as  const, message: "Layanan atau barber tidak ditemukan." };
    }
 
-   const { data: publicToken, error } = await supabase.rpc(
-      "insert_booking_returning_token",
-      {
+   const insertBooking = (candidate: { id: number; name: string }) =>
+      supabase.rpc("insert_booking_returning_token", {
          p_service_id: data.serviceId,
-         p_barber_id: barber.id,
+         p_barber_id: candidate.id,
          p_customer_name: data.customerName,
          p_customer_phone: normalizedPhone,
          p_customer_notes: data.customerNotes === "" ? null : data.customerNotes,
          p_starts_at: toIso(data.date, data.slotMinutes),
          p_ends_at: toIso(data.date, effectiveSlotEnd),
-      }
-   );
+      });
+
+   // "Siapa saja": bila kapster pilihan bentrok di database (23P01) karena
+   // pelanggan lain mengambil slot yang sama, coba kapster berikutnya.
+   let attempt = await insertBooking(barber);
+   for (const fallback of fallbackBarbers) {
+      if (attempt.error?.code !== "23P01") break;
+      barber = fallback;
+      attempt = await insertBooking(fallback);
+   }
+   const { data: publicToken, error } = attempt;
 
    if (error) {
       if (error.code === "23P01") { 

@@ -86,7 +86,9 @@ export default function BookingClient({
   workingHours,
 }: BookingClientProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
-  const [selectedBarberId, setSelectedBarberId] = useState<number | null>(null);
+  // 0 = "Siapa saja" (default). selectedBarberRef sengaja tetap null supaya
+  // pencarian tanggal terdekat tetap jalan sampai pelanggan memilih sendiri.
+  const [selectedBarberId, setSelectedBarberId] = useState<number | null>(0);
   const [selectedDate, setSelectedDate] = useState(
     () => listSmartCandidateDates(workingHours)[0]
   );
@@ -741,7 +743,7 @@ export default function BookingClient({
                   Siapa saja
                 </span>
                 <span className="mt-1 block text-xs text-ink/50">
-                  Kapster tercepat tersedia
+                  Dipilihkan otomatis
                 </span>
               </button>
               {barbers.map((barber) => {
