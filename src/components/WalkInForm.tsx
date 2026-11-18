@@ -22,7 +22,6 @@ interface WalkInFormProps {
   services: Service[];
   barbers: Barber[];
   workingHours: WorkingHour[];
-  startedBarberIds: number[];
   onSuccess: (message: string) => void;
 }
 
@@ -45,7 +44,6 @@ export default function WalkInForm({
   services,
   barbers,
   workingHours,
-  startedBarberIds,
   onSuccess,
 }: WalkInFormProps) {
   const today = new Date().toLocaleDateString("en-CA", {
@@ -94,10 +92,9 @@ export default function WalkInForm({
       barberId === "0"
         ? barbers.filter(
             (item) =>
-              item.is_active && !startedBarberIds.includes(item.id)
+              item.is_active
           )
         : selectedBarber
-          && !startedBarberIds.includes(selectedBarber.id)
           ? [selectedBarber]
           : [];
     let cancelled = false;
@@ -173,7 +170,6 @@ export default function WalkInForm({
     service,
     selectedBarber,
     barbers,
-    startedBarberIds,
   ]);
 
   function buildInput(startNow: boolean): WalkInInput | null {
