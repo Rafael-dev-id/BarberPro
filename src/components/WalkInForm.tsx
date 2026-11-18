@@ -113,7 +113,8 @@ export default function WalkInForm({
       setLoadingSlots(true);
       setErrorMessage("");
       try {
-        const weekday = new Date(`${date}T00:00:00+07:00`).getUTCDay();
+        // Jam 12:00 WIB agar getUTCDay() memberi hari Jakarta yang benar.
+        const weekday = new Date(`${date}T12:00:00+07:00`).getUTCDay();
         const slotsByBarber = await Promise.all(
           activeBarbers.map(async (activeBarber) => {
             const ranges = await getBookedSlots(activeBarber.id, date);
