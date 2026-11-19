@@ -22,7 +22,6 @@ interface WalkInFormProps {
   services: Service[];
   barbers: Barber[];
   workingHours: WorkingHour[];
-  startedBarberIds: number[];
   onSuccess: (message: string) => void;
 }
 
@@ -45,7 +44,6 @@ export default function WalkInForm({
   services,
   barbers,
   workingHours,
-  startedBarberIds,
   onSuccess,
 }: WalkInFormProps) {
   const today = new Date().toLocaleDateString("en-CA", {
@@ -94,10 +92,9 @@ export default function WalkInForm({
       barberId === "0"
         ? barbers.filter(
             (item) =>
-              item.is_active && !startedBarberIds.includes(item.id)
+              item.is_active
           )
         : selectedBarber
-          && !startedBarberIds.includes(selectedBarber.id)
           ? [selectedBarber]
           : [];
     let cancelled = false;
@@ -116,7 +113,8 @@ export default function WalkInForm({
       setLoadingSlots(true);
       setErrorMessage("");
       try {
-        const weekday = new Date(`${date}T00:00:00+07:00`).getUTCDay();
+        // Jam 12:00 WIB agar getUTCDay() memberi hari Jakarta yang benar.
+        const weekday = new Date(`${date}T12:00:00+07:00`).getUTCDay();
         const slotsByBarber = await Promise.all(
           activeBarbers.map(async (activeBarber) => {
             const ranges = await getBookedSlots(activeBarber.id, date);
@@ -173,7 +171,6 @@ export default function WalkInForm({
     service,
     selectedBarber,
     barbers,
-    startedBarberIds,
   ]);
 
   function buildInput(startNow: boolean): WalkInInput | null {

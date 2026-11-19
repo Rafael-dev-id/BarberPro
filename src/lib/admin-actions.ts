@@ -1239,7 +1239,7 @@ export async function createWalkInBooking(
          );
       if (data.barberId === 0) {
          barber = pickBarber(
-            findFreeBarbersAt(context, startsAtMs, service.duration, effectiveDate).filter(
+            findFreeBarbersAt(context, startsAtMs, service.duration, effectiveDate, undefined, false).filter(
                (candidate) => hasFullWorkingHours(candidate.id)
             ),
             context
@@ -1258,14 +1258,13 @@ export async function createWalkInBooking(
       if (!hasFullWorkingHours(barber.id)) {
          return { ok: false as const, message: "Jam tersebut di luar jam kerja kapster." };
       }
-      const running = hasRunningSession(context, barber.id);
       const overlapping = findOverlappingBooking(
          context,
          barber.id,
          startsAtMs,
          endsAtMs
       );
-      if (running || overlapping) {
+      if (overlapping) {
          return {
             ok: false as const,
             message: "Slot bentrok dengan booking lain. Pilih jam lain.",

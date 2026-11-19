@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import {
   resolveBookingStart,
@@ -115,16 +115,6 @@ export default function AdminBookingsTable({
   workingHours: WorkingHour[];
 }) {
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
-  const startedBarberIds = useMemo(
-    () => [
-      ...new Set(
-        bookings
-          .filter((booking) => booking.status === "started")
-          .map((booking) => booking.barber_id)
-      ),
-    ],
-    [bookings]
-  );
   const [nowMs, setNowMs] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all" | "custom">("today");
@@ -608,7 +598,6 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
-          startedBarberIds={startedBarberIds}
           onSuccess={(message) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
