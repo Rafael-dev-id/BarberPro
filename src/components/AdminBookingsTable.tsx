@@ -152,7 +152,7 @@ export default function AdminBookingsTable({
   const [page, setPage] = useState<number>(1);
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [walkInMessage, setWalkInMessage] = useState("");
-  const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
+  const [sortMode, setSortMode] = useState<"terbaru" | "slot">("slot");
   const [pendingAction, setPendingAction] = useState<{
     id: number;
     status: "done" | "cancelled";
@@ -501,10 +501,10 @@ export default function AdminBookingsTable({
 
   const sortedFiltered = [...filtered].sort((a, b) => {
     if (sortMode === "slot") {
-      return (
+      const byTime =
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime() ||
-        a.id - b.id
-      );
+        a.id - b.id;
+      return range === "history" ? -byTime : byTime;
     }
 
     const createdAt = (booking: BookingRow) => {
@@ -722,7 +722,7 @@ export default function AdminBookingsTable({
                 : "text-ink/70 hover:bg-cream"
             }`}
           >
-            Terbaru dahulu
+            Baru dibuat
           </button>
           <button
             type="button"
@@ -734,7 +734,7 @@ export default function AdminBookingsTable({
                 : "text-ink/70 hover:bg-cream"
             }`}
           >
-            Urut slot
+            Urut jam
           </button>
         </div>
       </div>
