@@ -22,7 +22,7 @@ interface WalkInFormProps {
   services: Service[];
   barbers: Barber[];
   workingHours: WorkingHour[];
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, date: string) => void;
 }
 
 function isSlotTaken(
@@ -227,7 +227,7 @@ export default function WalkInForm({
       }
 
       resetForm();
-      onSuccess(result.message);
+      onSuccess(result.message, date);
     } catch {
       setStartConflict(null);
       setErrorMessage("Walk-in gagal disimpan. Silakan coba lagi.");
@@ -256,7 +256,7 @@ export default function WalkInForm({
         return;
       }
       resetForm();
-      onSuccess(result.message);
+      onSuccess(result.message, date);
     } catch {
       setStartConflict(null);
       setErrorMessage("Walk-in gagal disimpan. Silakan coba lagi.");

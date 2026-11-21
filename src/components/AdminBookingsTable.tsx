@@ -626,9 +626,19 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
-          onSuccess={(message) => {
+          onSuccess={(message, walkInDate) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
+            setQ("");
+            setStatus("all");
+            setBarber("all");
+            setPickedDate("");
+            if (walkInDate === todayKey) setRange("today");
+            else if (walkInDate === tomorrowKey) setRange("tomorrow");
+            else {
+              setPickedDate(walkInDate);
+              setRange("pick");
+            }
             void reload();
           }}
         />
