@@ -15,7 +15,6 @@ import {
   jakartaDateKey,
   minutesPastEnd,
 } from "@/lib/booking-state";
-import DateRangePicker, { type Value } from "@/components/DateRangePicker";
 import { type Barber, type BookingRow, type Service, type WorkingHour } from "@/lib/types";
 import AdminStats from "@/components/AdminStats";
 import CashierPanel, { CashierRevenueTable } from "@/components/CashierPanel";
@@ -38,8 +37,33 @@ const statusLabels: Record<string, string> = {
   cancelled: "Dibatalkan",
 };
 
-const fmtDay = (d: Date) =>
-  d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }).toLowerCase();
+type DateRange = "today" | "tomorrow" | "7d" | "history" | "pick";
+
+const dateTabs: { value: Exclude<DateRange, "pick">; label: string }[] = [
+  { value: "today", label: "Hari ini" },
+  { value: "tomorrow", label: "Besok" },
+  { value: "7d", label: "7 hari" },
+  { value: "history", label: "Riwayat" },
+];
+
+const jakartaDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jakarta",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+// Kunci hari Jakarta berbentuk YYYY-MM-DD; urutan teksnya sama dengan urutan tanggal.
+function jakartaDayKey(input: string | number | Date): string {
+  return jakartaDayFormatter.format(new Date(input));
+}
+
+// Geser kunci hari memakai Date.UTC (kalender murni, tanpa zona waktu).
+function shiftDateKey(key: string, days: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
 const jakartaTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jakarta",
   hour: "2-digit",
@@ -117,19 +141,19 @@ export default function AdminBookingsTable({
   const [bookings, setBookings] = useState<BookingRow[]>(initialBookings);
   const [nowMs, setNowMs] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [range, setRange] = useState<"today" | "7d" | "30d" | "all" | "custom">("today");
+  const [range, setRange] = useState<DateRange>("today");
+  const [pickedDate, setPickedDate] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [status, setStatus] = useState<"all" | "confirmed" | "started" | "done" | "cancelled">("all");
   const [barber, setBarber] = useState("all");
   const [q, setQ] = useState("");
   const [mounted, setMounted] = useState(false);
-  // G2: tipe eksplisit. Tanpa generic, TS yakin state ini selamanya null.
-  const [customRange, setCustomRange] = useState<Value | null>(null);
   const [live, setLive] = useState<string>("MENYAMBUNG…");
   const liveStatusRef = useRef("MENYAMBUNG…");
   const [page, setPage] = useState<number>(1);
   const [showWalkIn, setShowWalkIn] = useState(false);
   const [walkInMessage, setWalkInMessage] = useState("");
-  const [sortMode, setSortMode] = useState<"terbaru" | "slot">("terbaru");
+  const [sortMode, setSortMode] = useState<"terbaru" | "slot">("slot");
   const [pendingAction, setPendingAction] = useState<{
     id: number;
     status: "done" | "cancelled";
@@ -426,53 +450,48 @@ export default function AdminBookingsTable({
         }
       : null;
 
-  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
-  const startToday = new Date(`${todayStr}T00:00:00+07:00`).getTime();
-  const endToday = new Date(`${todayStr}T23:59:59+07:00`).getTime();
-  const end7 = startToday + 7 * 24 * 60 * 60 * 1000;
-  const end30 = startToday + 30 * 24 * 60 * 60 * 1000;
+  const todayKey = jakartaDayKey(new Date());
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+  const lastKey7 = shiftDateKey(todayKey, 6);
+
+  // Hitungan di tombol tanggal: tanpa booking dibatalkan.
+  const dateCounts = { today: 0, tomorrow: 0, "7d": 0, history: 0 };
+  for (const b of bookings) {
+    if (b.status === "cancelled") continue;
+    const k = jakartaDayKey(b.starts_at);
+    if (k === todayKey) dateCounts.today++;
+    if (k === tomorrowKey) dateCounts.tomorrow++;
+    if (k >= todayKey && k <= lastKey7) dateCounts["7d"]++;
+    if (k < todayKey) dateCounts.history++;
+  }
 
   const barberNames = Array.from(new Set(bookings.map((b) => b.barbers?.name ?? "-")));
 
+  const needle = q.trim().toLowerCase();
+  const searching = needle.length > 0;
+
   const filtered = bookings.filter((b) => {
-    const t = new Date(b.starts_at).getTime();
-    if (range === "today" && (t < startToday || t > endToday)) return false;
-    if (range === "7d" && (t < startToday || t > end7)) return false;
-    if (range === "30d" && (t < startToday || t > end30)) return false;
-    // G3: KABELENYA. Tanpa cabang ini, rentang kustom hanya menghias dropdown.
-    // Butir hari dibanding milidetik: konsisten dengan preset lain di file ini.
-    if (range === "custom" && customRange && Array.isArray(customRange)) {
-      const [a, bb] = customRange;
-      if (a && bb) {
-        const s = new Date(`${a.toLocaleDateString("en-CA")}T00:00:00+07:00`).getTime();
-        const e = new Date(`${bb.toLocaleDateString("en-CA")}T23:59:59+07:00`).getTime();
-        if (t < s || t > e) return false;
-      }
+    if (!searching) {
+      const k = jakartaDayKey(b.starts_at);
+      if (range === "today" && k !== todayKey) return false;
+      if (range === "tomorrow" && k !== tomorrowKey) return false;
+      if (range === "7d" && (k < todayKey || k > lastKey7)) return false;
+      if (range === "history" && k >= todayKey) return false;
+      if (range === "pick" && pickedDate && k !== pickedDate) return false;
     }
     if (status !== "all" && b.status !== status) return false;
     if (barber !== "all" && (b.barbers?.name ?? "-") !== barber) return false;
-    const needle = q.trim().toLowerCase();
-    if (
-      needle &&
-      !b.customer_name.toLowerCase().includes(needle) &&
-      !b.customer_phone.includes(needle)
-    )
-      return false;
+    if (searching) {
+      const code = b.public_token.replace(/-/g, "").slice(0, 4).toLowerCase();
+      if (
+        !b.customer_name.toLowerCase().includes(needle) &&
+        !b.customer_phone.includes(needle) &&
+        !code.includes(needle)
+      )
+        return false;
+    }
     return true;
   });
-
-  const handleSetCustomRange = (v: Value) => {
-    setCustomRange(v);
-  };
-
-  const getDropdownLabel = () => {
-    // G6: console.log dibuang. Label hanya menyebut rentang yang benar-benar aktif.
-    if (range === "custom" && customRange && Array.isArray(customRange)) {
-      const [a, bb] = customRange;
-      if (a && bb) return `${fmtDay(a)} – ${fmtDay(bb)}`;
-    }
-    return "Rentang kustom…";
-  };
 
   const liveState = live.toUpperCase();
   const liveLabel =
@@ -490,10 +509,10 @@ export default function AdminBookingsTable({
 
   const sortedFiltered = [...filtered].sort((a, b) => {
     if (sortMode === "slot") {
-      return (
+      const byTime =
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime() ||
-        a.id - b.id
-      );
+        a.id - b.id;
+      return range === "history" && !searching ? -byTime : byTime;
     }
 
     const createdAt = (booking: BookingRow) => {
@@ -510,13 +529,22 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
+  const cancelledInList = sortedFiltered.filter((b) => b.status === "cancelled").length;
+  const activeFilterCount = (status !== "all" ? 1 : 0) + (barber !== "all" ? 1 : 0);
+  const filterSummary = [
+    `Menampilkan ${sortedFiltered.length} booking`,
+    status !== "all" ? (statusLabels[status] ?? status) : "",
+    barber !== "all" ? barber : "",
+  ]
+    .filter(Boolean)
+    .join(" \u00b7 ");
   useEffect(() => {
      const timer = setTimeout(() => {
         setPage(1);
      }, 0);
 
      return () => clearTimeout(timer);
-  }, [range, status, barber, q, customRange]);
+  }, [range, pickedDate, status, barber, q]);
 
   return (
     <>
@@ -598,9 +626,19 @@ export default function AdminBookingsTable({
           services={services}
           barbers={barbers}
           workingHours={workingHours}
-          onSuccess={(message) => {
+          onSuccess={(message, walkInDate) => {
             setWalkInMessage(message);
             setShowWalkIn(false);
+            setQ("");
+            setStatus("all");
+            setBarber("all");
+            setPickedDate("");
+            if (walkInDate === todayKey) setRange("today");
+            else if (walkInDate === tomorrowKey) setRange("tomorrow");
+            else {
+              setPickedDate(walkInDate);
+              setRange("pick");
+            }
             void reload();
           }}
         />
@@ -620,58 +658,122 @@ export default function AdminBookingsTable({
         </p>
       )}
 
-      {/* S5: mount hanya di klien — kalender tidak boleh dirender server. */}
-      {mounted && range === "custom" && (
-        <DateRangePicker onSendRange={handleSetCustomRange} />
-      )}
+      <div
+        role="group"
+        aria-label="Filter tanggal"
+        className="mb-3 flex flex-wrap items-center gap-2"
+      >
+        {dateTabs.map((tab) => {
+          const active = !searching && range === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                setRange(tab.value);
+                setPickedDate("");
+                setQ("");
+              }}
+              className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                active
+                  ? "border-gold bg-gold text-ink"
+                  : "border-line bg-white text-ink/70 hover:bg-cream"
+              }`}
+            >
+              {tab.label}
+              {mounted ? ` (${dateCounts[tab.value]})` : ""}
+            </button>
+          );
+        })}
+        <label
+          className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
+            !searching && range === "pick"
+              ? "border-gold bg-gold text-ink"
+              : "border-line bg-white text-ink/70"
+          }`}
+        >
+          Pilih tanggal
+          <input
+            type="date"
+            value={pickedDate}
+            onChange={(e) => {
+              const value = e.target.value;
+              setPickedDate(value);
+              setQ("");
+              setRange(value ? "pick" : "today");
+            }}
+            className="bg-transparent text-sm font-normal text-ink"
+          />
+        </label>
+        {searching && (
+          <p className="text-sm font-semibold text-ink/70">
+            Hasil pencarian: semua tanggal
+          </p>
+        )}
+      </div>
 
        
+      <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
+        <p className="min-w-0 text-sm text-ink/70">{filterSummary}</p>
+        <button
+          type="button"
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-cream"
+        >
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-gold px-2 text-xs font-bold text-ink">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
       <div className="mb-4 grid gap-2 sm:grid-cols-4">
-        <select
-          value={range}
-          onChange={(e) => {
-            const next = e.target.value as typeof range;
-            setRange(next);
-            // G4: aturan reset rancangan S3 Rafael — ganti preset = kustom lenyap.
-            if (next !== "custom") setCustomRange(null);
-          }}
-          className="input-premium"
-        >
-          <option value="all">Semua tanggal</option>
-          <option value="today">Hari ini</option>
-          <option value="7d">7 hari ke depan</option>
-          <option value="30d">30 hari ke depan</option>
-          <option value="custom">{getDropdownLabel()}</option>
-        </select>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
-          className="input-premium"
-        >
-          <option value="all">Semua status</option>
-          <option value="confirmed">Dikonfirmasi</option>
-          <option value="started">Sedang dikerjakan</option>
-          <option value="done">Selesai</option>
-          <option value="cancelled">Dibatalkan</option>
-        </select>
-        <select
-          value={barber}
-          onChange={(e) => setBarber(e.target.value)}
-          className="input-premium"
-        >
-          <option value="all">Semua kapster</option>
-          {barberNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Cari nama / nomor…"
-          className="input-premium"
-        />
+        <div className={`${showFilters ? "grid" : "hidden"} gap-2 md:contents`}>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as typeof status)}
+            className="input-premium"
+          >
+            <option value="all">Semua status</option>
+            <option value="confirmed">Dikonfirmasi</option>
+            <option value="started">Sedang dikerjakan</option>
+            <option value="done">Selesai</option>
+            <option value="cancelled">Dibatalkan</option>
+          </select>
+          <select
+            value={barber}
+            onChange={(e) => setBarber(e.target.value)}
+            className="input-premium"
+          >
+            <option value="all">Semua kapster</option>
+            {barberNames.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Cari kode, nama, atau nomor"
+            aria-label="Cari booking"
+            className="input-premium min-w-0 flex-1"
+          />
+          {searching && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="min-h-11 shrink-0 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-cream"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
         <div className="flex w-fit overflow-hidden rounded-xl border border-line">
           <button
             type="button"
@@ -683,7 +785,7 @@ export default function AdminBookingsTable({
                 : "text-ink/70 hover:bg-cream"
             }`}
           >
-            Terbaru dahulu
+            Baru dibuat
           </button>
           <button
             type="button"
@@ -695,7 +797,7 @@ export default function AdminBookingsTable({
                 : "text-ink/70 hover:bg-cream"
             }`}
           >
-            Urut slot
+            Urut jam
           </button>
         </div>
       </div>
@@ -899,6 +1001,11 @@ export default function AdminBookingsTable({
             )}
           </tbody>
         </table>
+        {cancelledInList > 0 && (
+          <p className="pt-3 text-right text-sm text-ink/70">
+            Daftar ini termasuk {cancelledInList} booking dibatalkan.
+          </p>
+        )}
 
         <div className="nav-btn flex gap-3 justify-end py-3">
            <span className="text-ink/70 text-sm">Halaman {pageSafe} dari {pageCount} — [ {sortedFiltered.length} booking ]</span>
