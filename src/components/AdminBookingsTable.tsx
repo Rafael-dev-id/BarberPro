@@ -143,6 +143,7 @@ export default function AdminBookingsTable({
   const [busyId, setBusyId] = useState<number | null>(null);
   const [range, setRange] = useState<DateRange>("today");
   const [pickedDate, setPickedDate] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [status, setStatus] = useState<"all" | "confirmed" | "started" | "done" | "cancelled">("all");
   const [barber, setBarber] = useState("all");
   const [q, setQ] = useState("");
@@ -529,6 +530,14 @@ export default function AdminBookingsTable({
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
   const cancelledInList = sortedFiltered.filter((b) => b.status === "cancelled").length;
+  const activeFilterCount = (status !== "all" ? 1 : 0) + (barber !== "all" ? 1 : 0);
+  const filterSummary = [
+    `Menampilkan ${sortedFiltered.length} booking`,
+    status !== "all" ? (statusLabels[status] ?? status) : "",
+    barber !== "all" ? barber : "",
+  ]
+    .filter(Boolean)
+    .join(" \u00b7 ");
   useEffect(() => {
      const timer = setTimeout(() => {
         setPage(1);
@@ -695,30 +704,48 @@ export default function AdminBookingsTable({
       </div>
 
        
+      <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
+        <p className="min-w-0 text-sm text-ink/70">{filterSummary}</p>
+        <button
+          type="button"
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-cream"
+        >
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-gold px-2 text-xs font-bold text-ink">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
       <div className="mb-4 grid gap-2 sm:grid-cols-4">
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
-          className="input-premium"
-        >
-          <option value="all">Semua status</option>
-          <option value="confirmed">Dikonfirmasi</option>
-          <option value="started">Sedang dikerjakan</option>
-          <option value="done">Selesai</option>
-          <option value="cancelled">Dibatalkan</option>
-        </select>
-        <select
-          value={barber}
-          onChange={(e) => setBarber(e.target.value)}
-          className="input-premium"
-        >
-          <option value="all">Semua kapster</option>
-          {barberNames.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+        <div className={`${showFilters ? "grid" : "hidden"} gap-2 md:contents`}>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as typeof status)}
+            className="input-premium"
+          >
+            <option value="all">Semua status</option>
+            <option value="confirmed">Dikonfirmasi</option>
+            <option value="started">Sedang dikerjakan</option>
+            <option value="done">Selesai</option>
+            <option value="cancelled">Dibatalkan</option>
+          </select>
+          <select
+            value={barber}
+            onChange={(e) => setBarber(e.target.value)}
+            className="input-premium"
+          >
+            <option value="all">Semua kapster</option>
+            {barberNames.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           <input
             value={q}
