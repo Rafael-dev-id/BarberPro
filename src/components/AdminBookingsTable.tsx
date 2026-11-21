@@ -466,22 +466,29 @@ export default function AdminBookingsTable({
 
   const barberNames = Array.from(new Set(bookings.map((b) => b.barbers?.name ?? "-")));
 
+  const needle = q.trim().toLowerCase();
+  const searching = needle.length > 0;
+
   const filtered = bookings.filter((b) => {
-    const k = jakartaDayKey(b.starts_at);
-    if (range === "today" && k !== todayKey) return false;
-    if (range === "tomorrow" && k !== tomorrowKey) return false;
-    if (range === "7d" && (k < todayKey || k > lastKey7)) return false;
-    if (range === "history" && k >= todayKey) return false;
-    if (range === "pick" && pickedDate && k !== pickedDate) return false;
+    if (!searching) {
+      const k = jakartaDayKey(b.starts_at);
+      if (range === "today" && k !== todayKey) return false;
+      if (range === "tomorrow" && k !== tomorrowKey) return false;
+      if (range === "7d" && (k < todayKey || k > lastKey7)) return false;
+      if (range === "history" && k >= todayKey) return false;
+      if (range === "pick" && pickedDate && k !== pickedDate) return false;
+    }
     if (status !== "all" && b.status !== status) return false;
     if (barber !== "all" && (b.barbers?.name ?? "-") !== barber) return false;
-    const needle = q.trim().toLowerCase();
-    if (
-      needle &&
-      !b.customer_name.toLowerCase().includes(needle) &&
-      !b.customer_phone.includes(needle)
-    )
-      return false;
+    if (searching) {
+      const code = b.public_token.replace(/-/g, "").slice(0, 4).toLowerCase();
+      if (
+        !b.customer_name.toLowerCase().includes(needle) &&
+        !b.customer_phone.includes(needle) &&
+        !code.includes(needle)
+      )
+        return false;
+    }
     return true;
   });
 
@@ -504,7 +511,7 @@ export default function AdminBookingsTable({
       const byTime =
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime() ||
         a.id - b.id;
-      return range === "history" ? -byTime : byTime;
+      return range === "history" && !searching ? -byTime : byTime;
     }
 
     const createdAt = (booking: BookingRow) => {
@@ -638,7 +645,7 @@ export default function AdminBookingsTable({
         className="mb-3 flex flex-wrap items-center gap-2"
       >
         {dateTabs.map((tab) => {
-          const active = range === tab.value;
+          const active = !searching && range === tab.value;
           return (
             <button
               key={tab.value}
@@ -647,6 +654,7 @@ export default function AdminBookingsTable({
               onClick={() => {
                 setRange(tab.value);
                 setPickedDate("");
+                setQ("");
               }}
               className={`min-h-11 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
                 active
@@ -661,7 +669,7 @@ export default function AdminBookingsTable({
         })}
         <label
           className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
-            range === "pick"
+            !searching && range === "pick"
               ? "border-gold bg-gold text-ink"
               : "border-line bg-white text-ink/70"
           }`}
@@ -673,11 +681,17 @@ export default function AdminBookingsTable({
             onChange={(e) => {
               const value = e.target.value;
               setPickedDate(value);
+              setQ("");
               setRange(value ? "pick" : "today");
             }}
             className="bg-transparent text-sm font-normal text-ink"
           />
         </label>
+        {searching && (
+          <p className="text-sm font-semibold text-ink/70">
+            Hasil pencarian: semua tanggal
+          </p>
+        )}
       </div>
 
        
@@ -705,12 +719,24 @@ export default function AdminBookingsTable({
             </option>
           ))}
         </select>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Cari nama / nomor…"
-          className="input-premium"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Cari kode, nama, atau nomor"
+            aria-label="Cari booking"
+            className="input-premium min-w-0 flex-1"
+          />
+          {searching && (
+            <button
+              type="button"
+              onClick={() => setQ("")}
+              className="min-h-11 shrink-0 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-cream"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
         <div className="flex w-fit overflow-hidden rounded-xl border border-line">
           <button
             type="button"
