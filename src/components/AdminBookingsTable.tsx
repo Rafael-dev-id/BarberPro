@@ -529,6 +529,158 @@ export default function AdminBookingsTable({
   const pageCount = Math.max(1, Math.ceil(sortedFiltered.length / 10));
   const pageSafe = Math.min(page, pageCount);
   const rows = sortedFiltered.slice((pageSafe - 1) * 10, pageSafe * 10);
+
+  function formatWhen(b: BookingRow): string {
+    const sessionTimes = b.status === "started" ? getSessionTimes(b) : null;
+    if (!sessionTimes) return formatBookingDateTime(b.starts_at);
+    const startText = jakartaTimeFormatter.format(
+      new Date(sessionTimes.startedAt)
+    );
+    const endText = sessionTimes.estimatedEndAt
+      ? jakartaTimeFormatter.format(new Date(sessionTimes.estimatedEndAt))
+      : "estimasi belum tersedia";
+    return `${formatBookingDateLabel(sessionTimes.startedAt)} \u00b7 mulai ${startText} \u00b7 selesai ${endText}`;
+  }
+
+  function renderStatusBadges(b: BookingRow) {
+    const rowState = nowMs === null ? "other" : getRowState(b, nowMs);
+    const minutesLate = nowMs === null ? null : getMinutesLate(b, nowMs);
+    const sessionTimes = b.status === "started" ? getSessionTimes(b) : null;
+    const statusLabel =
+      b.status === "cancelled"
+        ? b.cancelled_by === "customer"
+          ? "Dibatalkan pelanggan"
+          : b.cancelled_by === "admin"
+            ? "Dibatalkan admin"
+            : "Dibatalkan"
+        : statusLabels[b.status] ?? b.status;
+    return (
+      <>
+        <span
+          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+            statusColors[b.status] || "bg-cream text-ink/70"
+          }`}
+        >
+          {statusLabel}
+        </span>
+        {rowState === "overdue" && b.status === "confirmed" && (
+          <span
+            title="Jadwal sudah lewat lebih dari 15 menit"
+            className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+          >
+            Terlewat
+          </span>
+        )}
+        {minutesLate !== null && (
+          <span className="ml-1 inline-block text-xs font-medium text-amber-900">
+            Telat {minutesLate} menit
+          </span>
+        )}
+        {rowState === "stale_session" && (
+          <span
+            title="Sesi dimulai di hari sebelumnya dan belum ditutup"
+            className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+          >
+            Belum ditutup
+          </span>
+        )}
+        {rowState === "overtime" && nowMs !== null && (
+          <span
+            title={`Estimasi selesai ${jakartaTimeFormatter.format(
+              new Date(sessionTimes?.estimatedEndAt ?? b.ends_at)
+            )} sudah lewat ${minutesPastEnd(
+              sessionTimes?.estimatedEndAt ?? b.ends_at,
+              nowMs
+            )} menit`}
+            className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
+          >
+            Lewat estimasi
+          </span>
+        )}
+        {rowState === "future_session" && (
+          <span className="ml-1 inline-flex rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-900">
+            Jadwal belum tiba
+          </span>
+        )}
+        {b.status === "confirmed" &&
+          rowState === "today" &&
+          nowMs !== null &&
+          new Date(b.starts_at).getTime() > nowMs &&
+          isTooCloseToCancel(b.starts_at) && (
+            <span
+              title="Kurang dari 30 menit lagi"
+              className="ml-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900"
+            >
+              Segera
+            </span>
+          )}
+      </>
+    );
+  }
+
+  function renderActions(b: BookingRow, card = false) {
+    const rowState = nowMs === null ? "other" : getRowState(b, nowMs);
+    return (
+      <div className={card ? "flex w-full flex-col items-stretch gap-4" : "flex flex-col items-start gap-4"}>
+        <div className={card ? "flex flex-wrap items-center gap-3 empty:hidden [&>button]:flex-1" : "flex flex-wrap items-center gap-3 empty:hidden"}>
+          {b.status === "pending" && (
+            <button
+              type="button"
+              disabled={busyId === b.id}
+              onClick={() => handleStatus(b.id, "confirmed")}
+              className="min-h-11 rounded-xl bg-gold px-3 py-2 text-sm font-bold text-ink transition hover:bg-gold-soft disabled:opacity-50"
+            >
+              Konfirmasi
+            </button>
+          )}
+          {b.status === "confirmed" && rowState === "upcoming" && (
+            <span className="mr-2 text-sm text-ink/70">
+              {nowMs !== null &&
+              jakartaDateKey(b.starts_at) ===
+                jakartaDateKey(nowMs + 86_400_000)
+                ? "Mulai besok"
+                : `Mulai ${formatBookingDateLabel(b.starts_at)}`}
+            </span>
+          )}
+          {b.status === "confirmed" &&
+            (rowState === "today" || rowState === "overdue") && (
+              <button
+                type="button"
+                disabled={busyId === b.id}
+                onClick={() => handleStatus(b.id, "started")}
+                className="min-h-11 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
+              >
+                Mulai sekarang
+              </button>
+            )}
+          {((b.status === "started" &&
+            (rowState === "in_session" ||
+              rowState === "overtime" ||
+              rowState === "stale_session")) ||
+            (b.status === "confirmed" && rowState === "overdue")) && (
+            <button
+              type="button"
+              disabled={busyId === b.id}
+              onClick={() => handleStatus(b.id, "done")}
+              className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Selesai
+            </button>
+          )}
+        </div>
+        {(b.status === "confirmed" || b.status === "started") && (
+          <button
+            type="button"
+            disabled={busyId === b.id}
+            onClick={() => handleStatus(b.id, "cancelled")}
+            className={card ? "min-h-11 w-full rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50" : "min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"}
+          >
+            Batalkan
+          </button>
+        )}
+      </div>
+    );
+  }
   const cancelledInList = sortedFiltered.filter((b) => b.status === "cancelled").length;
   const activeFilterCount = (status !== "all" ? 1 : 0) + (barber !== "all" ? 1 : 0);
   const filterSummary = [
@@ -802,7 +954,7 @@ export default function AdminBookingsTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm md:text-base">
+        <table className="hidden w-full min-w-[640px] text-left text-sm md:table md:text-base">
           <thead>
             <tr className="border-b border-line bg-cream text-xs font-semibold uppercase tracking-wide text-ink/70">
               <th className="py-3 pr-3">Waktu</th>
@@ -827,36 +979,9 @@ export default function AdminBookingsTable({
                 </td>
               </tr>
             ) : (
-              rows.map((b) => {
-                const rowState =
-                  nowMs === null ? "other" : getRowState(b, nowMs);
-                const minutesLate =
-                  nowMs === null ? null : getMinutesLate(b, nowMs);
-                const sessionTimes =
-                  b.status === "started" ? getSessionTimes(b) : null;
-                const statusLabel =
-                  b.status === "cancelled"
-                    ? b.cancelled_by === "customer"
-                      ? "Dibatalkan pelanggan"
-                      : b.cancelled_by === "admin"
-                        ? "Dibatalkan admin"
-                        : "Dibatalkan"
-                    : statusLabels[b.status] ?? b.status;
-                return (
+              rows.map((b) => (
                 <tr key={b.id} className="border-b border-line">
-                  <td className="py-3 pr-3">
-                    {sessionTimes
-                      ? `${formatBookingDateLabel(sessionTimes.startedAt)} · mulai ${jakartaTimeFormatter.format(
-                          new Date(sessionTimes.startedAt)
-                        )} · selesai ${
-                          sessionTimes.estimatedEndAt
-                            ? jakartaTimeFormatter.format(
-                                new Date(sessionTimes.estimatedEndAt)
-                              )
-                            : "estimasi belum tersedia"
-                        }`
-                      : formatBookingDateTime(b.starts_at)}
-                  </td>
+                  <td className="py-3 pr-3">{formatWhen(b)}</td>
                   <td className="py-3 pr-3">
                     {b.customer_name}
                     <span className="block text-xs text-ink/70">
@@ -875,132 +1000,58 @@ export default function AdminBookingsTable({
                     </span>
                   </td>
                   <td className="py-3 pr-3">{b.barbers?.name ?? "-"}</td>
-                  <td className="py-3 pr-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        statusColors[b.status] || "bg-cream text-ink/70"
-                      }`}
-                    >
-                      {statusLabel}
-                    </span>
-                    {rowState === "overdue" && b.status === "confirmed" && (
-                      <span
-                        title="Jadwal sudah lewat lebih dari 15 menit"
-                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
-                      >
-                        Terlewat
-                      </span>
-                    )}
-                    {minutesLate !== null && (
-                      <span className="ml-1 inline-block text-xs font-medium text-amber-900">
-                        Telat {minutesLate} menit
-                      </span>
-                    )}
-                    {rowState === "stale_session" && (
-                      <span
-                        title="Sesi dimulai di hari sebelumnya dan belum ditutup"
-                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
-                      >
-                        Belum ditutup
-                      </span>
-                    )}
-                    {rowState === "overtime" && nowMs !== null && (
-                      <span
-                        title={`Estimasi selesai ${jakartaTimeFormatter.format(
-                          new Date(sessionTimes?.estimatedEndAt ?? b.ends_at)
-                        )} sudah lewat ${minutesPastEnd(
-                          sessionTimes?.estimatedEndAt ?? b.ends_at,
-                          nowMs
-                        )} menit`}
-                        className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800"
-                      >
-                        Lewat estimasi
-                      </span>
-                    )}
-                    {rowState === "future_session" && (
-                      <span className="ml-1 inline-flex rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-900">
-                        Jadwal belum tiba
-                      </span>
-                    )}
-                    {b.status === "confirmed" &&
-                      rowState === "today" &&
-                      nowMs !== null &&
-                      new Date(b.starts_at).getTime() > nowMs &&
-                      isTooCloseToCancel(b.starts_at) && (
-                      <span
-                        title="Kurang dari 30 menit lagi"
-                        className="ml-1 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900"
-                      >
-                        Segera
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex flex-col items-start gap-4">
-                    <div className="flex flex-wrap items-center gap-3 empty:hidden">
-                    {b.status === "pending" && (
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => handleStatus(b.id, "confirmed")}
-                        className="min-h-11 rounded-xl bg-gold px-3 py-2 text-sm font-bold text-ink transition hover:bg-gold-soft disabled:opacity-50"
-                      >
-                        Konfirmasi
-                      </button>
-                    )}
-                    {b.status === "confirmed" && rowState === "upcoming" && (
-                      <span className="mr-2 text-sm text-ink/70">
-                        {nowMs !== null &&
-                        jakartaDateKey(b.starts_at) ===
-                          jakartaDateKey(nowMs + 86_400_000)
-                          ? "Mulai besok"
-                          : `Mulai ${formatBookingDateLabel(b.starts_at)}`}
-                      </span>
-                    )}
-                    {b.status === "confirmed" &&
-                      (rowState === "today" || rowState === "overdue") && (
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => handleStatus(b.id, "started")}
-                        className="min-h-11 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-sky-700 disabled:opacity-50"
-                      >
-                        Mulai sekarang
-                      </button>
-                    )}
-                    {((b.status === "started" &&
-                      (rowState === "in_session" ||
-                        rowState === "overtime" ||
-                        rowState === "stale_session")) ||
-                      (b.status === "confirmed" && rowState === "overdue")) && (
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => handleStatus(b.id, "done")}
-                        className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        Selesai
-                      </button>
-                    )}
-                    </div>
-                    {(b.status === "confirmed" || b.status === "started") && (
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => handleStatus(b.id, "cancelled")}
-                        className="min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
-                      >
-                        Batalkan
-                      </button>
-                    )}
-                    </div>
-                  </td>
+                  <td className="py-3 pr-3">{renderStatusBadges(b)}</td>
+                  <td className="py-3">{renderActions(b)}</td>
                 </tr>
-                );
-              })
+              ))
             )}
           </tbody>
         </table>
+        <div className="md:hidden">
+          {bookings.length === 0 ? (
+            <p className="py-6 text-ink/70">Belum ada booking masuk.</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-ink/70">
+              Tidak ada booking yang cocok dengan filter.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-xl border border-line bg-white p-4"
+                >
+                  <p className="text-sm font-semibold text-ink">
+                    {formatWhen(b)}
+                  </p>
+                  <p className="mt-2 text-base font-bold text-ink">
+                    {b.customer_name}
+                  </p>
+                  <p className="text-xs text-ink/70">
+                    {b.customer_phone.startsWith("walkin-")
+                      ? "Tanpa nomor"
+                      : b.customer_phone}
+                  </p>
+                  <p className="text-xs text-ink/50">
+                    Kode {b.public_token.replace(/-/g, "").slice(0, 4).toUpperCase()}
+                  </p>
+                  <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                    <dt className="text-ink/70">Layanan</dt>
+                    <dd className="text-ink">
+                      {b.services?.name ?? "-"} ({formatRupiah(b.services?.price ?? 0)})
+                    </dd>
+                    <dt className="text-ink/70">Kapster</dt>
+                    <dd className="text-ink">{b.barbers?.name ?? "-"}</dd>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap items-center gap-1 [&>*]:ml-0">
+                    {renderStatusBadges(b)}
+                  </div>
+                  <div className="mt-4">{renderActions(b, true)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {cancelledInList > 0 && (
           <p className="pt-3 text-right text-sm text-ink/70">
             Daftar ini termasuk {cancelledInList} booking dibatalkan.
