@@ -38,6 +38,43 @@ type BookingSummary = {
   price: number;
 };
 
+const CUSTOMER_KEY = "barberpro:customer";
+
+type SavedCustomer = { name: string; phone: string };
+
+function clearSavedCustomer() {
+  try {
+    localStorage.removeItem(CUSTOMER_KEY);
+  } catch {
+    // Penyimpanan browser tidak tersedia: abaikan.
+  }
+}
+
+function readSavedCustomer(): SavedCustomer | null {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      const { name, phone } = parsed as { name?: unknown; phone?: unknown };
+      if (
+        typeof name === "string" &&
+        typeof phone === "string" &&
+        name.trim().length > 0 &&
+        name.length <= 100 &&
+        phone.trim().length > 0 &&
+        phone.length <= 20
+      ) {
+        return { name, phone };
+      }
+    }
+    clearSavedCustomer();
+  } catch {
+    clearSavedCustomer();
+  }
+  return null;
+}
+
 export default function BookingForm({
   complete,
   serviceId,
@@ -54,6 +91,7 @@ export default function BookingForm({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
+  const [prefilled, setPrefilled] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [serverMessage, setServerMessage] = useState("");
@@ -139,6 +177,14 @@ export default function BookingForm({
       } catch {
         // Booking tetap berhasil bila penyimpanan browser tidak tersedia.
       }
+      try {
+        localStorage.setItem(
+          CUSTOMER_KEY,
+          JSON.stringify({ name: customerName.trim(), phone: customerPhone.trim() })
+        );
+      } catch {
+        // Booking tetap berhasil bila penyimpanan browser tidak tersedia.
+      }
       onBooked(result.summary.publicToken);
     }
     else if (result.message === "Slot itu baru saja diambil pelanggan lain. Silakan pilih jam lain.") {
@@ -146,9 +192,19 @@ export default function BookingForm({
     }
   }
 
+  function handleClearSaved() {
+    clearSavedCustomer();
+    setCustomerName("");
+    setCustomerPhone("");
+    setErrors({});
+    setPrefilled(false);
+  }
+
   function resetForm() {
-     setCustomerName("");
-     setCustomerPhone("");
+     const saved = readSavedCustomer();
+     setCustomerName(saved ? saved.name : "");
+     setCustomerPhone(saved ? saved.phone : "");
+     setPrefilled(saved !== null);
      setCustomerNotes("");
      setErrors({});
      setStatus("idle");
@@ -159,6 +215,16 @@ export default function BookingForm({
      setCopyError("");
      onStartAnother();
   }
+
+  // Isi otomatis nama dan telepon dari booking sebelumnya (T8c).
+  useEffect(() => {
+    const saved = readSavedCustomer();
+    if (!saved) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCustomerName(saved.name);
+    setCustomerPhone(saved.phone);
+    setPrefilled(true);
+  }, []);
 
   // Patroli: kalau pilihan dari induk berubah, catatan gagal sudah basi → cabut.
   useEffect(() => {
@@ -286,11 +352,24 @@ export default function BookingForm({
       </div>
 
       <div className="mt-5 space-y-4">
+        {prefilled && (
+          <div className="flex flex-wrap items-center gap-x-2 text-xs text-ink/60">
+            <span>Terisi dari booking sebelumnya. Bukan kamu?</span>
+            <button
+              type="button"
+              onClick={handleClearSaved}
+              className="inline-flex min-h-11 items-center font-semibold text-ink underline underline-offset-2"
+            >
+              Ganti
+            </button>
+          </div>
+        )}
         <div>
           <label htmlFor="name" className="label-premium">Nama</label>
           <input
             id="name"
             type="text"
+            autoComplete="name"
             value={customerName}
             onChange={(e) => {
               setCustomerName(e.target.value);
@@ -307,6 +386,7 @@ export default function BookingForm({
           <input
             id="phone"
             type="tel"
+            autoComplete="tel"
             value={customerPhone}
             onChange={(e) => {
               setCustomerPhone(e.target.value);

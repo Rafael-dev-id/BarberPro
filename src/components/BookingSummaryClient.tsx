@@ -123,6 +123,7 @@ export default function BookingSummaryClient({
   const isConfirmed = summary.status === "confirmed";
   const isTooLate =
     isConfirmed && summary.cancel_block_reason === "too_late";
+  const isInactive = summary.status === "done" || summary.status === "cancelled";
 
   return (
     <>
@@ -216,7 +217,15 @@ export default function BookingSummaryClient({
             </>
           </div>
         )}
-        {!summary.can_cancel && (
+        {!summary.can_cancel && isInactive && (
+          <Link
+            href="/booking"
+            className="btn-gold mt-5 block min-h-11 w-full text-center"
+          >
+            Booking lagi
+          </Link>
+        )}
+        {!summary.can_cancel && !isInactive && (
           <Link
             href="/booking"
             className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-ink/70 underline underline-offset-2"
