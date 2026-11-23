@@ -618,11 +618,11 @@ export default function AdminBookingsTable({
     );
   }
 
-  function renderActions(b: BookingRow) {
+  function renderActions(b: BookingRow, card = false) {
     const rowState = nowMs === null ? "other" : getRowState(b, nowMs);
     return (
-      <div className="flex flex-col items-start gap-4">
-        <div className="flex flex-wrap items-center gap-3 empty:hidden">
+      <div className={card ? "flex w-full flex-col items-stretch gap-4" : "flex flex-col items-start gap-4"}>
+        <div className={card ? "flex flex-wrap items-center gap-3 empty:hidden [&>button]:flex-1" : "flex flex-wrap items-center gap-3 empty:hidden"}>
           {b.status === "pending" && (
             <button
               type="button"
@@ -673,7 +673,7 @@ export default function AdminBookingsTable({
             type="button"
             disabled={busyId === b.id}
             onClick={() => handleStatus(b.id, "cancelled")}
-            className="min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+            className={card ? "min-h-11 w-full rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50" : "min-h-11 rounded-xl border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"}
           >
             Batalkan
           </button>
@@ -954,7 +954,7 @@ export default function AdminBookingsTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm md:text-base">
+        <table className="hidden w-full min-w-[640px] text-left text-sm md:table md:text-base">
           <thead>
             <tr className="border-b border-line bg-cream text-xs font-semibold uppercase tracking-wide text-ink/70">
               <th className="py-3 pr-3">Waktu</th>
@@ -1007,6 +1007,51 @@ export default function AdminBookingsTable({
             )}
           </tbody>
         </table>
+        <div className="md:hidden">
+          {bookings.length === 0 ? (
+            <p className="py-6 text-ink/70">Belum ada booking masuk.</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-ink/70">
+              Tidak ada booking yang cocok dengan filter.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-xl border border-line bg-white p-4"
+                >
+                  <p className="text-sm font-semibold text-ink">
+                    {formatWhen(b)}
+                  </p>
+                  <p className="mt-2 text-base font-bold text-ink">
+                    {b.customer_name}
+                  </p>
+                  <p className="text-xs text-ink/70">
+                    {b.customer_phone.startsWith("walkin-")
+                      ? "Tanpa nomor"
+                      : b.customer_phone}
+                  </p>
+                  <p className="text-xs text-ink/50">
+                    Kode {b.public_token.replace(/-/g, "").slice(0, 4).toUpperCase()}
+                  </p>
+                  <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                    <dt className="text-ink/70">Layanan</dt>
+                    <dd className="text-ink">
+                      {b.services?.name ?? "-"} ({formatRupiah(b.services?.price ?? 0)})
+                    </dd>
+                    <dt className="text-ink/70">Kapster</dt>
+                    <dd className="text-ink">{b.barbers?.name ?? "-"}</dd>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap items-center gap-1 [&>*]:ml-0">
+                    {renderStatusBadges(b)}
+                  </div>
+                  <div className="mt-4">{renderActions(b, true)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {cancelledInList > 0 && (
           <p className="pt-3 text-right text-sm text-ink/70">
             Daftar ini termasuk {cancelledInList} booking dibatalkan.
