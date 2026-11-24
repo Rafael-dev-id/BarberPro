@@ -91,6 +91,7 @@ export default function BookingForm({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
+  const [promoOptIn, setPromoOptIn] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
@@ -164,6 +165,7 @@ export default function BookingForm({
       customerName: customerName.trim(),
       customerPhone: normalizePhone(customerPhone),
       customerNotes: customerNotes.trim(),
+      promoOptIn,
     });
 
     setStatus(result.ok ? "success" : "error");
@@ -206,6 +208,7 @@ export default function BookingForm({
      setCustomerPhone(saved ? saved.phone : "");
      setPrefilled(saved !== null);
      setCustomerNotes("");
+     setPromoOptIn(false);
      setErrors({});
      setStatus("idle");
      setServerMessage("");
@@ -417,6 +420,23 @@ export default function BookingForm({
             className="input-premium"
           />
         </div>
+
+        <label
+          htmlFor="promo-opt-in"
+          className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-white px-4 py-3"
+        >
+          <input
+            id="promo-opt-in"
+            type="checkbox"
+            checked={promoOptIn}
+            onChange={(e) => setPromoOptIn(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-gold"
+          />
+          <span className="text-sm">
+            <span className="block font-semibold text-ink">Mau dapat info promo menarik dari kami?</span>
+            <span className="mt-0.5 block text-xs text-ink/70">Kami kirim lewat WhatsApp ke nomor di atas.</span>
+          </span>
+        </label>
 
         {status === "error" && (
           <p className="rounded-xl bg-red-50 p-3 text-xs text-red-700 whitespace-pre-line [word-spacing:1px] tracking-[.5px] leading-[15px]">

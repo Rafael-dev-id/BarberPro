@@ -39,6 +39,7 @@ export type BookingRow = {
   cancelled_by: "customer" | "admin" | null;
   started_at: string | null;
   customer_notes?: string | null;
+  promo_opt_in?: boolean;
   status: string;
   services: { name: string; price: number; duration?: number } | null;
   barbers: { name: string } | null;

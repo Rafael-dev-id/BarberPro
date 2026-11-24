@@ -28,6 +28,7 @@ const bookingSchema = z.object({
    customerName: z.string().trim().min(3),
    customerPhone: z.string().regex(/^\+628\d{8,11}$/),
    customerNotes: z.string().trim().max(300),
+   promoOptIn: z.boolean().optional(),
 });
 
 export type BookingInput = z.infer<typeof bookingSchema>;
@@ -288,6 +289,7 @@ export async function createBooking(input: BookingInput) {
          p_customer_notes: data.customerNotes === "" ? null : data.customerNotes,
          p_starts_at: toIso(data.date, data.slotMinutes),
          p_ends_at: toIso(data.date, effectiveSlotEnd),
+         p_promo_opt_in: data.promoOptIn === true,
       });
 
    // "Siapa saja": bila kapster pilihan bentrok di database (23P01) karena

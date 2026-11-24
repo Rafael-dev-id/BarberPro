@@ -614,6 +614,14 @@ export default function AdminBookingsTable({
               Segera
             </span>
           )}
+        {b.promo_opt_in === true && (
+          <span
+            title="Pelanggan setuju dikabari promo"
+            className="ml-1 inline-flex rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-900"
+          >
+            Setuju promo
+          </span>
+        )}
       </>
     );
   }
